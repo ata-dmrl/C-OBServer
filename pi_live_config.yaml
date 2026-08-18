@@ -1,0 +1,136 @@
+# JWC üretim panosu — gerçek kalibrasyon
+#
+# ROI koordinatları gerçek USB capture çıktısından ölçüldü:
+# 1920x1080, MJPG, MacroSilicon MS2109.
+# Kareler arası piksel farkı ortalama 0.5 (sadece MJPEG gürültüsü),
+# bu yüzden sabit ROI güvenli, hizalama gerekmiyor.
+#
+# Eski config'teki score/timer/status ROI'leri örnek değerlerdi,
+# bu panoyla ilgileri yoktu.
+
+capture:
+  device: /dev/v4l/by-id/usb-MACROSILICON_USB3.0_Capture-video-index0
+  width: 1920
+  height: 1080
+  fps: 30
+  format: MJPG
+  reconnect_initial_seconds: 1
+  reconnect_max_seconds: 30
+
+display:
+  enabled: true
+  sink: kmssink
+  sync: false
+  driver_name: vc4
+
+ocr:
+  # 3 FPS gereksiz: bu donanımda alan başına ~272 ms ölçtük, altı alan
+  # ~1.6 sn eder. Duruş eşiği 30 sn civarında olacağı için 1 FPS zaten
+  # fazlasıyla çözünürlük veriyor. Değişim tespiti sayesinde pratikte
+  # bunun çok altında iş yapılıyor.
+  fps: 1
+  language: eng
+  workers: 1
+  use_change_detection: true
+  change_threshold: 8.0
+  force_refresh_seconds: 10
+
+api:
+  enabled: true
+  host: 0.0.0.0
+  port: 8080
+
+output:
+  results_file: output/results.json
+  debug_dir: output/debug
+  save_debug_images: false
+
+rois:
+  # ── Sayaçlar: her karede okunması gereken tek alanlar ──────────────
+  - id: total
+    x: 1420
+    y: 352
+    width: 437
+    height: 128
+    type: numeric
+    psm: 7
+    whitelist: "0123456789"
+    regex: "[0-9]{1,7}"
+    min_confidence: 70
+    change_threshold: 1.5
+    refresh_interval: 3
+    # Sayaç saniyede bir arttığı için "consecutive" (art arda 2 aynı okuma)
+    # modu hiç onay veremiyordu — okuma whitelist/regex/min_confidence ile
+    # zaten korunuyor, ek bir tutarlılık filtresine gerek yok.
+    stability_mode: none
+
+  - id: good
+    x: 1416
+    y: 512
+    width: 437
+    height: 126
+    type: numeric
+    psm: 7
+    whitelist: "0123456789"
+    regex: "[0-9]{1,7}"
+    min_confidence: 70
+    change_threshold: 1.5
+    refresh_interval: 3
+    stability_mode: none
+
+  # ── Kadranın ortasındaki kırmızı hız değeri ────────────────────────
+  # Rakam ortalanmış, skala 0-300 olduğu için 3 haneye çıkabiliyor.
+  # ROI bilerek geniş: dar kırpılırsa "250" kenarlardan kesilir.
+  # Soldaki "50" etiketi ve ibre bu kutunun dışında kalıyor.
+  - id: speed
+    x: 325
+    y: 372
+    width: 380
+    height: 194
+    type: numeric
+    psm: 7
+    whitelist: "0123456789"
+    regex: "[0-9]{1,3}"
+    min_confidence: 70
+    change_threshold: 1.5
+    refresh_interval: 3
+
+  # ── Yavaş değişen alanlar ──────────────────────────────────────────
+  # Model üretim sırasında değişebiliyor ve uygulamada anlık yansıması
+  # isteniyor; bu yüzden tazeleme aralığı kısa, değişim eşiği düşük tutuldu.
+  - id: model
+    x: 1368
+    y: 196
+    width: 490
+    height: 124
+    type: text
+    psm: 7
+    regex: "[A-Za-z0-9\\-]+"
+    min_confidence: 70
+    change_threshold: 10.0
+    refresh_interval: 15
+
+  - id: rate
+    x: 1380
+    y: 672
+    width: 468
+    height: 124
+    type: numeric
+    psm: 7
+    whitelist: "0123456789.%"
+    regex: "[0-9]{1,3}\\.[0-9]{1,2}%?"
+    min_confidence: 70
+    refresh_interval: 30
+
+  - id: runtime
+    x: 1408
+    y: 832
+    width: 435
+    height: 123
+    type: numeric
+    psm: 7
+    whitelist: "0123456789.h"
+    regex: "[0-9]{1,4}\\.[0-9]h?"
+    min_confidence: 70
+    change_threshold: 10.0
+    refresh_interval: 15
