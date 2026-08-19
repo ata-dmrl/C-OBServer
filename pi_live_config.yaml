@@ -108,7 +108,8 @@ rois:
     regex: "[A-Za-z0-9\\-]+"
     min_confidence: 70
     change_threshold: 10.0
-    refresh_interval: 15
+    refresh_interval: 10
+    stability_mode: none
 
   - id: rate
     x: 1380
@@ -134,3 +135,4 @@ rois:
     min_confidence: 70
     change_threshold: 10.0
     refresh_interval: 15
+    stability_mode: none
