@@ -1,0 +1,11 @@
+# Bu paketler hocanın pi_capture_ocr taban paketine EK olarak gerekir
+# (README'nin "Saha cihazı" kurulum adımıyla aynı). GStreamer/appsink,
+# capture ve temel passthrough taban pakette zaten var; burada sadece
+# bizim eklediğimiz RapidOCR tanıma motoru için gerekenler listeleniyor.
+
+rapidocr==3.9.1
+onnxruntime
+
+# Taban pakette muhtemelen zaten var; yoksa ekleyin:
+# opencv-python
+# numpy

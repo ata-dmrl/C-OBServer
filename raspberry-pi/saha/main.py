@@ -49,19 +49,20 @@ class Service:
         self.worker_alive = 0
         self._threads: list[threading.Thread] = []
 
-        # Anlık görüntü: en son karenin JPEG'i, mobil "Anlık Görüntü Al" için.
-        # OCR akışını yavaşlatmamak için ayrı kilit, 5 fps'e sabitlenmiş kodlama.
-        self.last_frame_jpeg: bytes | None = None
+        # Anlık görüntü: en son karenin ham referansı, mobil "Anlık Görüntü Al" için.
+        # Kasıtlı olarak burada JPEG'e KODLAMIYORUZ — bu iş her karede (sürekli,
+        # kimse izlemese bile) yapılırsa Pi'ye gereksiz sürekli CPU yükü biner
+        # (zaten ısınan bir cihazda). Kodlama sadece /frame.jpg gerçekten
+        # istendiğinde, o an, tek seferlik yapılıyor (bkz. create_snapshot_app).
+        self.last_frame = None
         self._frame_lock = threading.Lock()
-        self._last_snapshot_ts = 0.0
-        self.snapshot_interval = 0.2  # 5 fps
 
         # Merkeze köprü. ResultStore anlık durumu tutmaya devam ediyor;
         # bu köprü aynı değerleri olay motoruna ve veritabanına taşıyor.
         self.bridge = IngestBridge(
             api_url=API_URL,
             machine_id=MACHINE_ID,
-            min_interval=1.0,
+            min_interval=0.5,
             spool_path=str(Path(self.config.output.results_file).parent / "spool.jsonl"),
         ) if INGEST_ENABLED else None
         if self.bridge:
@@ -79,9 +80,8 @@ class Service:
             try: frame = self.frames.get(timeout=.5)
             except queue.Empty: continue
             self.last_frame_wall = time.time()
-            if self.last_frame_wall - self._last_snapshot_ts >= self.snapshot_interval:
-                self._encode_snapshot(frame)
-                self._last_snapshot_ts = self.last_frame_wall
+            with self._frame_lock:
+                self.last_frame = frame  # kopyalamıyoruz — neredeyse bedava, sadece referans
             for cfg in self.config.rois:
                 try:
                     raw_roi = crop_roi(frame, cfg)
@@ -134,19 +134,19 @@ class Service:
         finally:
             engine.close(); self.worker_alive -= 1
 
-    def _encode_snapshot(self, frame) -> None:
+    def get_snapshot(self) -> bytes | None:
+        """İstek anında, tek seferlik JPEG kodlar. Arka planda sürekli çalışan bir şey yok."""
+        with self._frame_lock:
+            frame = self.last_frame
+        if frame is None:
+            return None
         try:
             import cv2
             ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-            if ok:
-                with self._frame_lock:
-                    self.last_frame_jpeg = buf.tobytes()
+            return buf.tobytes() if ok else None
         except Exception:
             LOG.exception("Anlık görüntü kodlanamadı")
-
-    def get_snapshot(self) -> bytes | None:
-        with self._frame_lock:
-            return self.last_frame_jpeg
+            return None
 
     def health(self):
         snapshot = self.metrics.snapshot()

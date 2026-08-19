@@ -133,6 +133,6 @@ rois:
     whitelist: "0123456789.h"
     regex: "[0-9]{1,4}\\.[0-9]h?"
     min_confidence: 70
-    change_threshold: 10.0
-    refresh_interval: 15
+    change_threshold: 12.0
+    refresh_interval: 60
     stability_mode: none

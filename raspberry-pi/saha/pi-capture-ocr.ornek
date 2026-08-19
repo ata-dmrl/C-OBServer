@@ -1,0 +1,8 @@
+# /etc/default/pi-capture-ocr
+# Her sahada farklı olan tek dosya budur; kod tüm cihazlarda aynı kalır.
+
+JWC_MACHINE_ID=MAK-01
+JWC_API_URL=http://192.168.1.100:8000
+
+# Köprüyü geçici kapatmak için:
+# JWC_INGEST=0
