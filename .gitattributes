@@ -1,0 +1,13 @@
+# Windows'ta dosya düzenleme araçları satır sonlarını CRLF'e çeviriyor,
+# core.autocrlf=false olsa bile — bu da tek satırlık değişikliklerin
+# git diff'te "tüm dosya değişti" gibi görünmesine sebep oluyordu. Metin
+# dosyaları için LF'i zorunlu kılıp bunu kalıcı olarak önlüyoruz.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.db binary
+*.db-wal binary
+*.db-shm binary
