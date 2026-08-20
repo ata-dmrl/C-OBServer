@@ -83,11 +83,24 @@ function KameraKarti({ bant }: { bant: Bant }) {
   const [aktifFoto, setAktifFoto] = React.useState<string | null>(null);
   const sonIstekTs = React.useRef(0);
 
+  // Yenile'ye art arda basmak Pi'de her seferinde yeni bir JPEG kodlama
+  // tetikliyordu (kimlik doğrulama/hız sınırlaması olmayan bir uç) — 3
+  // saniyelik bir bekleme ile bunu sınırlıyoruz.
+  const BEKLEME_SN = 3;
+  const [geriSayim, setGeriSayim] = React.useState(0);
+  const geriSayimRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (geriSayimRef.current) clearInterval(geriSayimRef.current);
+    };
+  }, []);
+
   // Butona her basışta tek kare çeker. Yeni kareyi ekrana koymadan önce arka
   // planda indirir — böylece eski kare yenisi hazır olana kadar ekranda kalır,
   // aradaki boşluk/titreme olmaz.
   const fotografIste = React.useCallback(() => {
-    if (!bant.kameraUrl) return;
+    if (!bant.kameraUrl || geriSayim > 0) return;
     const ts = Date.now();
     sonIstekTs.current = ts;
     const url = `${bant.kameraUrl}?t=${ts}`;
@@ -96,7 +109,18 @@ function KameraKarti({ bant }: { bant: Bant }) {
         if (sonIstekTs.current === ts) setAktifFoto(url);
       })
       .catch(() => {}); // ağ hatasında mevcut kareyi ekranda tut
-  }, [bant.kameraUrl]);
+
+    setGeriSayim(BEKLEME_SN);
+    geriSayimRef.current = setInterval(() => {
+      setGeriSayim(onceki => {
+        if (onceki <= 1) {
+          if (geriSayimRef.current) clearInterval(geriSayimRef.current);
+          return 0;
+        }
+        return onceki - 1;
+      });
+    }, 1000);
+  }, [bant.kameraUrl, geriSayim]);
 
   React.useEffect(() => {
     Animated.loop(
@@ -113,8 +137,14 @@ function KameraKarti({ bant }: { bant: Bant }) {
         <Text style={s.cardTitle}>Anlık Kontrol</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           {aktifFoto && (
-            <TouchableOpacity onPress={fotografIste} style={{ backgroundColor: C.peach, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
-              <Text style={{ fontSize: 10, fontWeight: "700", color: "white" }}>Yenile</Text>
+            <TouchableOpacity
+              onPress={fotografIste}
+              disabled={geriSayim > 0}
+              style={{ backgroundColor: geriSayim > 0 ? C.muted : C.peach, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}
+            >
+              <Text style={{ fontSize: 10, fontWeight: "700", color: "white" }}>
+                {geriSayim > 0 ? `${geriSayim}sn` : "Yenile"}
+              </Text>
             </TouchableOpacity>
           )}
           <View style={{ backgroundColor: piBagli ? "rgba(76, 217, 100, 0.1)" : "rgba(255, 59, 48, 0.1)", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 }}>
@@ -135,8 +165,14 @@ function KameraKarti({ bant }: { bant: Bant }) {
           <View style={[s.simContainer, { paddingHorizontal: 24 }]}>
             {bant.kameraUrl ? (
               <>
-                <TouchableOpacity onPress={fotografIste} style={{ backgroundColor: C.peach, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 16 }}>
-                  <Text style={{ color: "white", fontSize: 13, fontWeight: "700" }}>Anlık Görüntü Al</Text>
+                <TouchableOpacity
+                  onPress={fotografIste}
+                  disabled={geriSayim > 0}
+                  style={{ backgroundColor: geriSayim > 0 ? C.muted : C.peach, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 16 }}
+                >
+                  <Text style={{ color: "white", fontSize: 13, fontWeight: "700" }}>
+                    {geriSayim > 0 ? `${geriSayim} sn sonra tekrar dene` : "Anlık Görüntü Al"}
+                  </Text>
                 </TouchableOpacity>
                 <Text style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, textAlign: "center", marginTop: 12 }}>
                   Sürekli akış yerine, sadece ihtiyaç duyduğunuzda kameradan o anki taze fotoğrafı çekebilirsiniz.
