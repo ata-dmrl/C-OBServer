@@ -19,7 +19,7 @@ açık). Mobil uygulama bu sunucuya bağlanır.
                                        └──────────────────────────────┘
 ```
 
-Üç repo/klasör:
+Tek depo (`github.com/ata-dmrl/C-OBServer`), üç ana klasör:
 
 | Konum | İçerik | Nereye gider |
 |---|---|---|
@@ -30,19 +30,25 @@ açık). Mobil uygulama bu sunucuya bağlanır.
 
 ---
 
-## 1. Yerel geliştirme (bu makine, Windows)
+## 1. Yerel geliştirme (Windows)
 
-Zaten kurulu ve çalışıyor. Tek komutla başlatma/durdurma:
+Depoyu klonladıktan, merkez + adapha-api bağımlılıklarını kurup `.env`
+dosyalarını (bölüm 2) ayarladıktan sonra tek komutla başlatma/durdurma:
 
 ```bash
-C:\Users\asus\Desktop\Adapha\JWC\baslat.ps1
-C:\Users\asus\Desktop\Adapha\JWC\durdur.ps1
+.\baslat.ps1
+.\durdur.ps1
 ```
+
+(Depo kökünden çalıştırın — tam yol da olur: `C:\yol\C-OBServer\baslat.ps1`.)
 
 `baslat.ps1` merkezi, adapha-api'yi ve Expo'yu sırayla, ayrı pencerelerde
 başlatır. Sıfırdan kurulum adımları aşağıdaki 3 ve 4. bölümlerle aynı —
 tek fark sunucunun "bu bilgisayar" olması ve production ortam
-değişkenleri yerine geliştirme varsayılanlarının kullanılması.
+değişkenleri yerine geliştirme varsayılanlarının kullanılması. Gerekli
+kütüphanelerin kurulumu için 4.2 (merkez, Python) ve 4.3 (adapha-api,
+Node) adımlarını uygulayın; Expo için `adapha-rn/adapha-rn` içinde
+`npm install` yeterli.
 
 ---
 
@@ -56,9 +62,9 @@ bu projede bir kere başımıza geldi).
 
 ```bash
 # jwc/merkez/.env
-DATABASE_URL=sqlite:////opt/jwc/jwc/data/jwc.db      # Linux, mutlak yol
+DATABASE_URL=sqlite:////opt/C-OBServer/jwc/data/jwc.db      # Linux, mutlak yol
 # adapha-rn/adapha-api/.env
-DATABASE_URL="file:/opt/jwc/jwc/data/jwc.db"
+DATABASE_URL="file:/opt/C-OBServer/jwc/data/jwc.db"
 ```
 
 Klasör yapısı Windows'takiyle birebir aynı korunursa (`jwc/`,
@@ -144,25 +150,28 @@ NSSM ile servise çevirmek yeterli).
 
 ### 4.1 Kodu sunucuya al
 
+Tek depo, tek `git clone` — `jwc/`, `adapha-rn/` ve `raspberry-pi/`
+hepsi aynı deponun içinde gelir:
+
 ```bash
-sudo mkdir -p /opt/jwc && cd /opt/jwc
-git clone https://github.com/abdulkadirelaldi/jwc.git jwc
-git clone https://github.com/kaangeckin/adapha-rn.git adapha-rn
+sudo mkdir -p /opt && cd /opt
+git clone https://github.com/ata-dmrl/C-OBServer.git
+cd C-OBServer
 mkdir -p jwc/data
 ```
 
-`raspberry-pi/` klasörünü sunucuya kopyalamaya gerek **yok** — o sadece
-Pi'ye gider.
+`raspberry-pi/` klasörünü sunucuya kurmaya gerek **yok** — o sadece
+Pi'ye kopyalanır (bkz. bölüm 3), sunucuda hiç kullanılmaz.
 
 ### 4.2 merkez (FastAPI, port 8100)
 
 ```bash
-cd /opt/jwc/jwc/merkez
+cd /opt/C-OBServer/jwc/merkez
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 cat > .env <<'EOF'
-DATABASE_URL=sqlite:////opt/jwc/jwc/data/jwc.db
+DATABASE_URL=sqlite:////opt/C-OBServer/jwc/data/jwc.db
 EOF
 ```
 
@@ -176,8 +185,8 @@ After=network.target
 
 [Service]
 User=jwc
-WorkingDirectory=/opt/jwc/jwc/merkez
-ExecStart=/opt/jwc/jwc/merkez/.venv/bin/uvicorn api:app --host 0.0.0.0 --port 8100
+WorkingDirectory=/opt/C-OBServer/jwc/merkez
+ExecStart=/opt/C-OBServer/jwc/merkez/.venv/bin/uvicorn api:app --host 0.0.0.0 --port 8100
 Restart=on-failure
 RestartSec=3
 
@@ -193,10 +202,10 @@ sudo systemctl enable --now jwc-merkez
 ### 4.3 adapha-api (Node/Express/Prisma, port 3000)
 
 ```bash
-cd /opt/jwc/adapha-rn/adapha-api
+cd /opt/C-OBServer/adapha-rn/adapha-api
 npm ci
 cat > .env <<'EOF'
-DATABASE_URL="file:/opt/jwc/jwc/data/jwc.db"
+DATABASE_URL="file:/opt/C-OBServer/jwc/data/jwc.db"
 MERKEZ_URL=http://127.0.0.1:8100
 PORT=3000
 EOF
@@ -212,7 +221,7 @@ After=network.target jwc-merkez.service
 
 [Service]
 User=jwc
-WorkingDirectory=/opt/jwc/adapha-rn/adapha-api
+WorkingDirectory=/opt/C-OBServer/adapha-rn/adapha-api
 ExecStart=/usr/bin/node dist/index.js
 Restart=on-failure
 RestartSec=3
@@ -296,7 +305,7 @@ portlara göre çalıştığı için hangi yöntemi seçerseniz seçin aynen iş
 
 ```bash
 # /etc/cron.d/jwc-backup
-0 3 * * * jwc cp /opt/jwc/jwc/data/jwc.db /opt/jwc/yedek/jwc-$(date +\%Y\%m\%d).db
+0 3 * * * jwc cp /opt/C-OBServer/jwc/data/jwc.db /opt/C-OBServer/yedek/jwc-$(date +\%Y\%m\%d).db
 ```
 
 WAL modu açıkken (`jwc.db-wal`, `jwc.db-shm` dosyaları) düz `cp` bazen

@@ -228,12 +228,15 @@ Ayrıntı: `belge/DURUM-RAPORU.md`
 
 ---
 
-## İlgili depolar
+## İlgili depo
 
-| Depo | İçerik |
-|---|---|
-| https://github.com/abdulkadirelaldi/jwc | Bu depo — saha, merkez, panel, araçlar |
-| https://github.com/kaangeckin/adapha-rn | Mobil uygulama ve ara katman |
+Bu klasör (`jwc/`), merkezin de olduğu **birleşik depo**nun bir parçası —
+ayrı bir git deposu değil. Tüm sistem (merkez, adapha-api, mobil uygulama,
+Raspberry Pi kodu) tek depoda:
+https://github.com/ata-dmrl/C-OBServer
+
+Genel harita için depo kökündeki `README.md`'ye, uçtan uca kurulum için
+`KURULUM.md`'ye bakın.
 
 ---
 
