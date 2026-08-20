@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hat İzleme</title>
+
+<!--
+  Sunucu adresi
+  ─────────────
+  Varsayılan aşağıda. Değiştirmek için ya bu satırı düzenleyin ya da
+  adres çubuğuna sorgu parametresi ekleyin:
+
+      panel.html?api=http://192.168.1.133:8100
+
+  Fabrikada bu URL'yi yer imine ekleyip TV'de tam ekran açın (F11).
+-->
+<script>
+  const VARSAYILAN_API = "http://192.168.1.133:8100";
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --ink:#08151f;
+  --panel:#0f2334;
+  --panel-2:#132b3f;
+  --jwc:#2e69a3;
+  --line:rgba(255,255,255,.14);
+  --line-soft:rgba(255,255,255,.07);
+  --paper:#dfe8ef;
+  --muted:#7d94a8;
+  --run:#35d08a;
+  --stop:#ef4a4f;
+  --idle:#55697c;
+  --warn:#e8a33d;
+
+  --display:"Oswald","Helvetica Neue Condensed",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--ink);
+  color:var(--paper);
+  font-family:var(--body);
+  font-size:15px;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ── üst şerit ───────────────────────────────────────────── */
+header{
+  display:flex;align-items:stretch;gap:0;
+  border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,var(--panel-2),var(--panel));
+  position:sticky;top:0;z-index:20;
+}
+.marka{
+  padding:14px 22px;border-right:1px solid var(--line);
+  display:flex;flex-direction:column;justify-content:center;min-width:190px;
+}
+.marka b{
+  font-family:var(--display);font-weight:400;font-size:21px;
+  letter-spacing:.06em;text-transform:uppercase;line-height:1;
+}
+.marka span{font-size:11px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase;margin-top:5px}
+
+.ozet{display:flex;flex:1;min-width:0}
+.ozet div{
+  padding:14px 22px;border-right:1px solid var(--line-soft);
+  display:flex;flex-direction:column;justify-content:center;
+}
+.ozet .k{font-size:10px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase}
+.ozet .v{font-family:var(--display);font-weight:400;font-size:26px;line-height:1.1;margin-top:3px;font-variant-numeric:tabular-nums}
+
+.durum-cip{
+  display:flex;align-items:center;gap:9px;padding:14px 22px;
+  font-size:12px;color:var(--muted);white-space:nowrap;
+}
+.nokta{width:8px;height:8px;border-radius:50%;background:var(--idle);flex:none}
+.nokta.on{background:var(--run);box-shadow:0 0 0 4px rgba(53,208,138,.16)}
+.nokta.off{background:var(--stop);box-shadow:0 0 0 4px rgba(239,74,79,.16)}
+
+/* ── ızgara ──────────────────────────────────────────────── */
+main{padding:20px;display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(330px,1fr))}
+
+.kart{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-left:3px solid var(--idle);
+  padding:16px 18px 14px;
+  cursor:pointer;
+  transition:border-color .25s,background .25s;
+}
+.kart:hover{background:var(--panel-2)}
+.kart:focus-visible{outline:2px solid var(--jwc);outline-offset:2px}
+.kart.calisiyor{border-left-color:var(--run)}
+.kart.durdu{border-left-color:var(--stop)}
+.kart.kopuk{border-left-color:var(--idle);opacity:.6}
+
+.kart-ust{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.kart-ad{font-family:var(--display);font-weight:500;font-size:19px;letter-spacing:.05em;text-transform:uppercase}
+.rozet{
+  font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  padding:3px 9px;border:1px solid currentColor;color:var(--idle);white-space:nowrap;
+}
+.rozet.calisiyor{color:var(--run)}
+.rozet.durdu{color:var(--stop)}
+
+.model{font-size:12px;color:var(--muted);margin-top:2px;font-family:var(--mono)}
+
+/* sayaç — kartın kahramanı */
+.sayac{margin:14px 0 4px;display:flex;align-items:baseline;gap:10px}
+.sayac .n{
+  font-family:var(--display);font-weight:300;font-size:52px;line-height:.95;
+  font-variant-numeric:tabular-nums;letter-spacing:-.01em;
+  transition:color .5s;
+}
+.sayac .n.tik{color:var(--run);transition:none}
+.sayac .d{font-size:13px;color:var(--run);font-family:var(--mono);opacity:0;transition:opacity .4s}
+.sayac .d.gor{opacity:1;transition:none}
+.sayac-etiket{font-size:10px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase}
+
+/* nabız şeridi — son bir saatin şekli */
+.nabiz{display:flex;gap:1px;height:22px;margin:14px 0 10px}
+.nabiz i{flex:1;background:var(--idle);opacity:.25}
+.nabiz i.ok{background:var(--run);opacity:.75}
+.nabiz i.no{background:var(--stop);opacity:.9}
+.nabiz-alt{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);font-family:var(--mono);margin-top:-6px}
+
+.olcumler{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line-soft)}
+.olcum .k{font-size:9px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase}
+.olcum .v{font-family:var(--display);font-size:20px;font-variant-numeric:tabular-nums;margin-top:2px}
+.olcum .v small{font-size:12px;color:var(--muted)}
+
+/* ── detay çekmecesi ─────────────────────────────────────── */
+.perde{position:fixed;inset:0;background:rgba(4,10,16,.72);opacity:0;pointer-events:none;transition:opacity .2s;z-index:40}
+.perde.acik{opacity:1;pointer-events:auto}
+.cekmece{
+  position:fixed;top:0;right:0;bottom:0;width:min(560px,100%);
+  background:var(--panel);border-left:1px solid var(--line);
+  transform:translateX(100%);transition:transform .26s cubic-bezier(.4,0,.2,1);
+  z-index:50;display:flex;flex-direction:column;
+}
+.cekmece.acik{transform:none}
+.cekmece header{position:static;padding:18px 22px;justify-content:space-between;align-items:center}
+.cekmece h2{margin:0;font-family:var(--display);font-weight:400;font-size:22px;letter-spacing:.05em;text-transform:uppercase}
+.kapat{background:none;border:1px solid var(--line);color:var(--paper);width:32px;height:32px;cursor:pointer;font-size:16px;line-height:1}
+.kapat:hover{background:var(--panel-2)}
+.cekmece-govde{overflow-y:auto;padding:20px 22px 40px}
+
+.bolum-baslik{font-size:10px;color:var(--muted);letter-spacing:.16em;text-transform:uppercase;margin:22px 0 10px}
+.bolum-baslik:first-child{margin-top:0}
+
+.ozet-kutu{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line-soft);border:1px solid var(--line-soft)}
+.ozet-kutu div{background:var(--panel);padding:12px 14px}
+.ozet-kutu .k{font-size:9px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase}
+.ozet-kutu .v{font-family:var(--display);font-size:24px;font-variant-numeric:tabular-nums;margin-top:3px}
+.ozet-kutu .v small{font-size:12px;color:var(--muted);margin-left:2px}
+
+.olay{display:grid;grid-template-columns:78px 1fr auto;gap:12px;padding:11px 0;border-bottom:1px solid var(--line-soft);align-items:baseline}
+.olay time{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.olay .t{font-size:14px}
+.olay .t em{font-style:normal;color:var(--muted);font-size:12px;display:block;margin-top:2px;font-family:var(--mono)}
+.olay .s{font-family:var(--mono);font-size:13px;white-space:nowrap}
+.olay.durus .t{color:var(--stop)}
+.olay.acik .s{color:var(--warn)}
+
+.bos{color:var(--muted);font-size:13px;padding:14px 0}
+svg.trend{width:100%;height:120px;display:block}
+
+footer{padding:14px 22px 30px;color:var(--muted);font-size:11px;font-family:var(--mono);text-align:center}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+@media (max-width:760px){
+  header{flex-wrap:wrap}
+  .marka{flex:1 1 auto;min-width:0;padding:12px 16px;border-right:none}
+  .durum-cip{padding:12px 16px;border-left:1px solid var(--line-soft)}
+  /* flex:1 -> flex-basis:0 olduğu için width:100% yetmiyor, taban genişliği veriyoruz */
+  .ozet{order:3;flex:0 0 100%;display:grid;grid-template-columns:repeat(4,1fr);
+        border-top:1px solid var(--line-soft)}
+  .ozet div{padding:10px 12px;border-right:1px solid var(--line-soft)}
+  .ozet div:last-child{border-right:none}
+  .ozet .v{font-size:20px}
+  main{padding:12px;gap:12px}
+  .sayac .n{font-size:44px}
+}
+@media (max-width:420px){
+  .ozet{grid-template-columns:repeat(2,1fr)}
+  .ozet div:nth-child(2){border-right:none}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="marka"><b>Hat İzleme</b><span id="saat">—</span></div>
+  <div class="ozet">
+    <div><span class="k">Çalışan</span><span class="v" id="oz-calisan">—</span></div>
+    <div><span class="k">Duran</span><span class="v" id="oz-duran">—</span></div>
+    <div><span class="k">Toplam üretim</span><span class="v" id="oz-uretim">—</span></div>
+    <div><span class="k">Ortalama kalite</span><span class="v" id="oz-kalite">—</span></div>
+  </div>
+  <div class="durum-cip"><span class="nokta" id="baglanti-nokta"></span><span id="baglanti-metin">bağlanılıyor…</span></div>
+</header>
+
+<main id="izgara"></main>
+<footer id="dipnot"></footer>
+
+<div class="perde" id="perde"></div>
+<aside class="cekmece" id="cekmece" aria-hidden="true">
+  <header>
+    <h2 id="d-ad">—</h2>
+    <button class="kapat" id="d-kapat" aria-label="Kapat">✕</button>
+  </header>
+  <div class="cekmece-govde">
+    <div class="bolum-baslik">Vardiya özeti</div>
+    <div class="ozet-kutu" id="d-ozet"></div>
+    <div class="bolum-baslik">Üretim eğilimi — son 2 saat</div>
+    <div id="d-trend"></div>
+    <div class="bolum-baslik">Olaylar — son 24 saat</div>
+    <div id="d-olaylar"></div>
+  </div>
+</aside>
+
+<script>
+"use strict";
+
+const API = new URLSearchParams(location.search).get("api") || VARSAYILAN_API;
+const WS  = API.replace(/^http/, "ws") + "/live";
+
+const state = {
+  makineler: new Map(),   // id -> makine
+  olaylar:   new Map(),   // id -> olay dizisi
+  oncekiToplam: new Map(),
+  acikId: null,
+};
+
+/* ── biçimlendirme ─────────────────────────────────────────── */
+const sayi = n => (n == null ? "—" : n.toLocaleString("tr-TR"));
+const yuzde = f => (f == null ? "—" : (f * 100).toFixed(1) + "%");
+const saatBicim = iso => {
+  if (!iso) return "—";
+  // Sunucu UTC gönderiyor; "Z" yoksa ekleyip yerel saate çeviriyoruz.
+  const d = new Date(/[Zz+]|\d{2}:\d{2}$/.test(iso.slice(10)) ? iso : iso + "Z");
+  return d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+};
+const zaman = iso => new Date(/[Zz+]|\d{2}:\d{2}$/.test(iso.slice(10)) ? iso : iso + "Z").getTime();
+const sure = s => {
+  if (s == null) return "—";
+  const t = Math.round(s);
+  if (t < 60) return t + " sn";
+  const dk = Math.floor(t / 60), sn = t % 60;
+  if (dk < 60) return sn ? `${dk} dk ${sn} sn` : `${dk} dk`;
+  return `${Math.floor(dk / 60)} sa ${dk % 60} dk`;
+};
+
+const OLAY_ADI = {
+  DURUS: "Duruş",
+  MODEL_DEGISIMI: "Model değişimi",
+  SAYAC_RESET: "Sayaç sıfırlandı",
+  KALITE_UYARISI: "Kalite uyarısı",
+  SINYAL_KAYBI: "Sinyal kaybı",
+};
+
+const durumSinifi = s =>
+  s === "CALISIYOR" ? "calisiyor" : s === "DURDU" ? "durdu" : "kopuk";
+const durumAdi = s =>
+  ({ CALISIYOR: "Çalışıyor", DURDU: "Durdu", SINYAL_YOK: "Sinyal yok", BILINMIYOR: "Bekleniyor" }[s] || s);
+
+/* ── veri ──────────────────────────────────────────────────── */
+async function makineleriCek() {
+  const r = await fetch(API + "/machines");
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const liste = await r.json();
+  liste.forEach(m => state.makineler.set(m.id, m));
+  return liste;
+}
+
+async function olaylariCek(id) {
+  try {
+    const r = await fetch(`${API}/machines/${id}/events?hours=24`);
+    if (r.ok) state.olaylar.set(id, await r.json());
+  } catch (_) {}
+}
+
+/* ── nabız şeridi: son 60 dakikayı 60 dilime böl ───────────── */
+function nabizDilimleri(id) {
+  const N = 60, simdi = Date.now(), dk = 60000;
+  const dilim = new Array(N).fill("bos");
+  const olaylar = (state.olaylar.get(id) || []).filter(e => e.type === "DURUS");
+  const m = state.makineler.get(id);
+  const gorulmus = m && m.last_seen ? zaman(m.last_seen) : 0;
+
+  for (let i = 0; i < N; i++) {
+    const bas = simdi - (N - i) * dk, bit = bas + dk;
+    if (gorulmus && bit < gorulmus - 3600000) continue;
+    if (bit <= gorulmus + dk) dilim[i] = "ok";
+  }
+  for (const e of olaylar) {
+    const b = zaman(e.start), s = e.end ? zaman(e.end) : simdi;
+    for (let i = 0; i < N; i++) {
+      const bas = simdi - (N - i) * dk, bit = bas + dk;
+      if (s > bas && b < bit) dilim[i] = "no";
+    }
+  }
+  return dilim;
+}
+
+/* ── kart ──────────────────────────────────────────────────── */
+function kartHtml(m) {
+  const o = m.oee || {};
+  const sinif = durumSinifi(m.status);
+  const dilim = nabizDilimleri(m.id).map(d =>
+    `<i class="${d === "ok" ? "ok" : d === "no" ? "no" : ""}"></i>`).join("");
+
+  return `
+    <article class="kart ${sinif}" tabindex="0" data-id="${m.id}">
+      <div class="kart-ust">
+        <div>
+          <div class="kart-ad">${m.name || m.id}</div>
+          <div class="model">${m.model ? "Model " + m.model : "Model —"}</div>
+        </div>
+        <span class="rozet ${sinif}">${durumAdi(m.status)}</span>
+      </div>
+
+      <div class="sayac">
+        <span class="n" data-sayac="${m.id}">${sayi(m.total)}</span>
+        <span class="d" data-delta="${m.id}"></span>
+      </div>
+      <div class="sayac-etiket">Toplam üretim</div>
+
+      <div class="nabiz" title="Son 60 dakika">${dilim}</div>
+      <div class="nabiz-alt"><span>−60 dk</span><span>şimdi</span></div>
+
+      <div class="olcumler">
+        <div class="olcum"><div class="k">Sağlam</div><div class="v">${sayi(m.good)}</div></div>
+        <div class="olcum"><div class="k">Kalite</div><div class="v">${m.rate != null ? m.rate.toFixed(2) + "<small>%</small>" : "—"}</div></div>
+        <div class="olcum"><div class="k">Kullanılabilirlik</div><div class="v">${yuzde(o.availability)}</div></div>
+      </div>
+    </article>`;
+}
+
+function ciz() {
+  const liste = [...state.makineler.values()].sort((a, b) => a.id.localeCompare(b.id));
+  document.getElementById("izgara").innerHTML = liste.map(kartHtml).join("");
+
+  const calisan = liste.filter(m => m.status === "CALISIYOR").length;
+  const duran = liste.filter(m => m.status === "DURDU").length;
+  const uretim = liste.reduce((t, m) => t + (m.total || 0), 0);
+  const kaliteler = liste.map(m => m.rate).filter(r => r != null);
+
+  document.getElementById("oz-calisan").textContent = calisan;
+  document.getElementById("oz-duran").textContent = duran;
+  document.getElementById("oz-uretim").textContent = sayi(uretim);
+  document.getElementById("oz-kalite").textContent = kaliteler.length
+    ? (kaliteler.reduce((a, b) => a + b, 0) / kaliteler.length).toFixed(2) + "%" : "—";
+
+  document.getElementById("dipnot").textContent =
+    liste.length ? `${liste.length} makine · ${API}` : "";
+}
+
+/* sayaç arttığında kısa vurgu — kartı yeniden çizmeden */
+function sayacTik(id, yeni) {
+  const el = document.querySelector(`[data-sayac="${id}"]`);
+  const dl = document.querySelector(`[data-delta="${id}"]`);
+  if (!el) return;
+  const onceki = state.oncekiToplam.get(id);
+  el.textContent = sayi(yeni);
+  if (onceki != null && yeni > onceki) {
+    el.classList.add("tik"); dl.textContent = "+" + (yeni - onceki); dl.classList.add("gor");
+    setTimeout(() => { el.classList.remove("tik"); dl.classList.remove("gor"); }, 60);
+  }
+  state.oncekiToplam.set(id, yeni);
+}
+
+/* ── detay ─────────────────────────────────────────────────── */
+function trendCiz(ornekler) {
+  const kap = document.getElementById("d-trend");
+  const noktalar = ornekler.filter(s => s.valid && s.total != null);
+  if (noktalar.length < 2) { kap.innerHTML = `<p class="bos">Grafik için yeterli veri yok.</p>`; return; }
+
+  const W = 500, H = 120, P = 6;
+  const t0 = zaman(noktalar[0].ts), t1 = zaman(noktalar[noktalar.length - 1].ts) || t0 + 1;
+  const vals = noktalar.map(s => s.total);
+  const min = Math.min(...vals), max = Math.max(...vals), araliq = max - min || 1;
+
+  const d = noktalar.map((s, i) => {
+    const x = P + (zaman(s.ts) - t0) / (t1 - t0 || 1) * (W - 2 * P);
+    const y = H - P - (s.total - min) / araliq * (H - 2 * P);
+    return `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+
+  kap.innerHTML = `
+    <svg class="trend" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"
+         aria-label="Toplam üretim eğilimi">
+      <path d="${d} L${W - P},${H - P} L${P},${H - P} Z" fill="rgba(53,208,138,.10)"/>
+      <path d="${d}" fill="none" stroke="var(--run)" stroke-width="1.6"
+            vector-effect="non-scaling-stroke"/>
+    </svg>
+    <div class="nabiz-alt"><span>${sayi(min)}</span><span>${sayi(max)}</span></div>`;
+}
+
+function olaylariCiz(id) {
+  const kap = document.getElementById("d-olaylar");
+  const olaylar = state.olaylar.get(id) || [];
+  if (!olaylar.length) { kap.innerHTML = `<p class="bos">Son 24 saatte olay yok.</p>`; return; }
+
+  kap.innerHTML = olaylar.map(e => {
+    const acik = e.end == null;
+    const ek = e.meta && (e.meta.eski != null || e.meta.yeni != null)
+      ? `<em>${e.meta.eski ?? "—"} → ${e.meta.yeni ?? "—"}</em>` : "";
+    const s = e.type === "DURUS" || e.type === "SINYAL_KAYBI"
+      ? (acik ? "sürüyor" : sure(e.duration_s)) : "";
+    return `
+      <div class="olay ${e.type === "DURUS" ? "durus" : ""} ${acik ? "acik" : ""}">
+        <time>${saatBicim(e.start)}</time>
+        <div class="t">${OLAY_ADI[e.type] || e.type}${ek}</div>
+        <div class="s">${s}</div>
+      </div>`;
+  }).join("");
+}
+
+function ozetCiz(m) {
+  const o = m.oee || {};
+  const kutu = (k, v) => `<div><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  document.getElementById("d-ozet").innerHTML =
+    kutu("Kullanılabilirlik", yuzde(o.availability)) +
+    kutu("Kalite", yuzde(o.quality)) +
+    kutu("Toplam duruş", sure(o.downtime_s)) +
+    kutu("Vardiya üretimi", sayi(o.uretim)) +
+    kutu("Performans", o.performance == null
+        ? `<small>nominal hız tanımsız</small>` : yuzde(o.performance)) +
+    kutu("OEE", o.oee == null ? `<small>hesaplanamıyor</small>` : yuzde(o.oee));
+}
+
+async function detayAc(id) {
+  const m = state.makineler.get(id);
+  if (!m) return;
+  state.acikId = id;
+  document.getElementById("d-ad").textContent = m.name || id;
+  document.getElementById("cekmece").classList.add("acik");
+  document.getElementById("cekmece").setAttribute("aria-hidden", "false");
+  document.getElementById("perde").classList.add("acik");
+  document.getElementById("d-trend").innerHTML = `<p class="bos">Yükleniyor…</p>`;
+  ozetCiz(m);
+
+  await olaylariCek(id);
+  olaylariCiz(id);
+  try {
+    const r = await fetch(`${API}/machines/${id}/samples?hours=2&limit=600`);
+    trendCiz(r.ok ? await r.json() : []);
+  } catch (_) { trendCiz([]); }
+}
+
+function detayKapat() {
+  state.acikId = null;
+  document.getElementById("cekmece").classList.remove("acik");
+  document.getElementById("cekmece").setAttribute("aria-hidden", "true");
+  document.getElementById("perde").classList.remove("acik");
+}
+
+document.getElementById("izgara").addEventListener("click", e => {
+  const k = e.target.closest(".kart"); if (k) detayAc(k.dataset.id);
+});
+document.getElementById("izgara").addEventListener("keydown", e => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const k = e.target.closest(".kart"); if (k) { e.preventDefault(); detayAc(k.dataset.id); }
+});
+document.getElementById("d-kapat").addEventListener("click", detayKapat);
+document.getElementById("perde").addEventListener("click", detayKapat);
+document.addEventListener("keydown", e => { if (e.key === "Escape") detayKapat(); });
+
+/* ── bağlantı ──────────────────────────────────────────────── */
+function baglantiDurumu(tip, metin) {
+  document.getElementById("baglanti-nokta").className = "nokta " + tip;
+  document.getElementById("baglanti-metin").textContent = metin;
+}
+
+let ws = null, gecikme = 1000;
+
+function soketBagla() {
+  try { ws = new WebSocket(WS); } catch (_) { yenidenDene(); return; }
+
+  ws.onopen = () => { gecikme = 1000; baglantiDurumu("on", "canlı"); };
+
+  ws.onmessage = ev => {
+    let p; try { p = JSON.parse(ev.data); } catch (_) { return; }
+    if (p.kind !== "update" || !p.machine_id) return;
+
+    const m = state.makineler.get(p.machine_id) || { id: p.machine_id, name: p.machine_id };
+    const durumDegisti = m.status !== p.status;
+    Object.assign(m, {
+      status: p.status, total: p.total, good: p.good, rate: p.rate,
+      speed: p.speed, model: p.model ?? m.model,
+      oee: p.oee ?? m.oee, last_seen: new Date().toISOString(),
+    });
+    state.makineler.set(m.id, m);
+
+    // Olay geldiyse ya da durum değiştiyse tam çizim; değilse sadece sayaç.
+    if (durumDegisti || (Array.isArray(p.events) && p.events.length)) {
+      olaylariCek(m.id).then(() => {
+        ciz();
+        if (state.acikId === m.id) { olaylariCiz(m.id); ozetCiz(m); }
+      });
+      ciz();
+    } else {
+      sayacTik(m.id, p.total);
+    }
+  };
+
+  ws.onclose = () => { baglantiDurumu("off", "bağlantı koptu"); yenidenDene(); };
+  ws.onerror = () => { try { ws.close(); } catch (_) {} };
+}
+
+function yenidenDene() {
+  // Üstel geri çekilme, 30 saniyede sınırlı.
+  setTimeout(() => {
+    baglantiDurumu("", "yeniden bağlanılıyor…");
+    baslat(false);
+  }, gecikme);
+  gecikme = Math.min(gecikme * 2, 30000);
+}
+
+async function baslat(ilk) {
+  try {
+    // Soket sadece değişiklikleri yayınlar; mevcut durum önce REST'ten alınır.
+    const liste = await makineleriCek();
+    liste.forEach(m => state.oncekiToplam.set(m.id, m.total));
+    await Promise.all(liste.map(m => olaylariCek(m.id)));
+    ciz();
+    soketBagla();
+  } catch (err) {
+    baglantiDurumu("off", "sunucuya ulaşılamıyor");
+    document.getElementById("izgara").innerHTML =
+      `<article class="kart"><div class="kart-ad">Bağlantı yok</div>
+       <p class="bos">${API} adresine ulaşılamadı.<br>
+       Sunucunun çalıştığını doğrulayın, ya da adres çubuğuna
+       <code>?api=http://ADRES:PORT</code> ekleyin.</p></article>`;
+    if (ilk) yenidenDene();
+  }
+}
+
+// Nabız şeridi zamana bağlı; dakikada bir tazelensin.
+setInterval(() => { if (state.makineler.size) ciz(); }, 60000);
+setInterval(() => {
+  document.getElementById("saat").textContent =
+    new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+}, 1000);
+
+baslat(true);
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+# Merkez sadece bunlara ihtiyaç duyar — OCR/CV paketleri (rapidocr,
+# onnxruntime, opencv-python) burada YOK, çünkü hiçbir merkez/*.py dosyası
+# onları import etmiyor. Onlar Pi tarafının bağımlılığı, bkz.
+# ../../raspberry-pi/saha/requirements.txt.
+fastapi
+uvicorn[standard]
+sqlalchemy
+httpx
+pydantic
+python-dotenv
+
+# prod veritabanı (SQLite ile dev yaparken gerekmez)
+# psycopg[binary]

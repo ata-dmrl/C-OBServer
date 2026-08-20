@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ── Uygulama tarafı — veri: bantların canlı durumu ve mobile giden/gelen her şey ──
+model UygulamaVerisi {
+  id              String             @id // "MAK-01"
+  hatAdi          String             // "Hat 1 – A Blok" (eskiden ayrı Hat tablosundaydı)
+  blok            String?
+  isim            String             // "Bant 1 – Hat A"
+  durum           String             @default("kapali") // acik, kapali
+  anlikHiz        Float?             // birim/dakika
+  kameraUrl       String?            // piIp/piPort'tan otomatik türetilir (http://piIp:piPort/frame.jpg)
+  piIp            String?            // Bu bandı izleyen Raspberry Pi'nin kendi IP'si, ör. "192.168.1.154"
+  piPort          Int?               @default(8090) // Pi'deki anlık görüntü sunucusunun portu
+  mevcutModel     String?            // "Tip-M"
+  toplamUretim    Int?               // 43624
+  iyiUretim       Int?               // 42909
+  sertifikaOrani  Float?             // 98.36
+  calismaSuresi   Float?             // 4.1 (saat)
+  oee             Float?             // Gerçek OEE değeri
+  availability    Float?
+  qualityOrani    Float?
+  duruşSuresiSn   Float?
+  baglantiDurumu  String?            // ONLINE, SINYAL_YOK, BILINMIYOR
+  oeeUretim       Int?               // Bu oturumda üretilen (merkez oee().uretim) — ham yaşam boyu sayaç değil
+  oeeUretimIyi    Int?               // Bu oturumda üretilen iyi (merkez oee().uretim_iyi)
+
+  sonGuncelleme   DateTime           @default(now())
+
+  trendler        UygulamaTrend[]
+  loglar          UygulamaLog[]
+}
+
+// ── Uygulama tarafı — veri: grafik geçmişi (uygulama_verisi'nin alt-parçası) ──
+model UygulamaTrend {
+  id          Int             @id @default(autoincrement())
+  bantId      String
+  timestamp   DateTime        @default(now())
+  hiz         Float?
+  miktar      Int?
+  kaliteOrani Float?
+  oee         Float?
+
+  bant        UygulamaVerisi  @relation(fields: [bantId], references: [id])
+
+  @@unique([bantId, timestamp])
+}
+
+// ── Uygulama tarafı — log: bildirimler / çıkabilecek hatalar ─────────────────
+model UygulamaLog {
+  id          Int             @id @default(autoincrement())
+  bantId      String?         // hangi bant/makineyle ilgili — genel bildirimlerde (ör. "merkeze bağlanıldı") null
+  tip         String          // acil, yuksek, orta, bilgi, hata
+  mesaj       String
+  okundu      Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+
+  bant        UygulamaVerisi? @relation(fields: [bantId], references: [id])
+}
+
+// ── Expo Push Token'ları ──────────────────────────────────────────────────────
+model PushToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  createdAt DateTime @default(now())
+}

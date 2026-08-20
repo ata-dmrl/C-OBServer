@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# veritabanı ve çıktılar
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+output/
+spool.jsonl
+capture_samples/
+frames/
+roi_overlay.png
+roi_strips.png
+*.mp4
+
+# ortam
+.env
+.env.local
+
+# işletim sistemi
+.DS_Store
+Thumbs.db
