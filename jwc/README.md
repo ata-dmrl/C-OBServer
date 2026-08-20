@@ -21,26 +21,26 @@ bütün mimari kararları belirledi.
 
 ## Mimari
 
-```
-Makine panosu (HDMI)
-      │
-      ▼
-USB Capture (MacroSilicon MS2109)
-      │
-      ▼
-Raspberry Pi                          ../raspberry-pi/saha/  (ayrı klasör)
-  GStreamer tee ─┬─ kmssink           TV'ye görüntü kesintisiz devam eder
-                 └─ appsink           kare → ROI → RapidOCR → doğrulama
-      │ POST /ingest  (IP admin panelinden atanmış makineyi belirler)
-      ▼
-Merkezi API (FastAPI, :8100)          merkez/
-  olay motoru · OEE · veritabanı · WebSocket
-      │
-      ├─── panel.html                 tarayıcı paneli (tek dosya)
-      │
-      └─── adapha-api (Node/Prisma, :3000)   ayrı depo (adapha-rn)
-                │
-                └─── React Native (Expo)     ayrı depo (adapha-rn)
+```mermaid
+flowchart TD
+    Pano["Makine panosu (HDMI)"] --> Capture["USB Capture\n(MacroSilicon MS2109)"]
+    Capture --> Pi
+
+    subgraph Pi["Raspberry Pi — ../raspberry-pi/saha/"]
+        Tee["GStreamer tee"]
+        Tee -->|kmssink| TV["TV'ye görüntü\nkesintisiz devam eder"]
+        Tee -->|appsink| OCR["kare → ROI → RapidOCR → doğrulama"]
+    end
+
+    OCR -->|"POST /ingest\n(IP admin panelinden atanmış\nmakineyi belirler)"| Merkez
+
+    subgraph Merkez["Merkezi API (FastAPI, :8100) — merkez/"]
+        Motor["olay motoru · OEE · veritabanı · WebSocket"]
+    end
+
+    Merkez --> Panel["panel.html\n(tarayıcı paneli, tek dosya)"]
+    Merkez --> Ara["adapha-api (Node/Prisma, :3000)\nadapha-rn/adapha-api"]
+    Ara --> RN["React Native (Expo)\nadapha-rn/adapha-rn"]
 ```
 
 Merkez ve adapha-api aynı fiziksel SQLite dosyasını (`data/jwc.db`)

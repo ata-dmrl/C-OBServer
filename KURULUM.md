@@ -5,19 +5,24 @@ var: **Raspberry Pi** (fabrika sahasında, makine başına bir tane) ve
 **sunucu** (merkez API + adapha-api + veritabanı, tek yerde, her zaman
 açık). Mobil uygulama bu sunucuya bağlanır.
 
+```mermaid
+flowchart LR
+    Pi["Raspberry Pi\nraspberry-pi/saha"]
+    subgraph Sunucu["SUNUCU — tek makine, her zaman açık"]
+        direction TB
+        Merkez["merkez :8100\nFastAPI"]
+        DB[("jwc.db\npaylaşılan SQLite")]
+        API["adapha-api :3000\nNode/Prisma"]
+        Merkez <--> DB
+        API <--> DB
+    end
+    Mobil["Mobil uygulama\n(herkesin telefonu)"]
+    Pi -- "POST /ingest\n(IP admin panelden atanmış olmalı)" --> Merkez
+    API -- "REST + Socket.IO" --> Mobil
 ```
-┌─────────────┐     POST /ingest      ┌──────────────────────────────┐
-│ Raspberry Pi│ ───────────────────▶  │           SUNUCU              │
-│ (saha)      │   (IP admin panelden  │  merkez (:8100, FastAPI)      │
-│             │    atanmış olmalı)    │       ↓ paylaşılan jwc.db     │
-└─────────────┘                       │  adapha-api (:3000, Node)     │
-                                       └──────────────────────────────┘
-                                                    ↑ REST + Socket.IO
-                                       ┌──────────────────────────────┐
-                                       │  Mobil uygulama (Expo/React   │
-                                       │  Native) — herkesin telefonu  │
-                                       └──────────────────────────────┘
-```
+
+Veritabanı şemasının (5 tablo, kim neyi yönetiyor) ayrıntısı için bkz.
+kök `README.md` → "Veritabanı" bölümü.
 
 Tek depo (`github.com/ata-dmrl/C-OBServer`), üç ana klasör:
 
@@ -69,6 +74,13 @@ DATABASE_URL="file:/opt/C-OBServer/jwc/data/jwc.db"
 
 Klasör yapısı Windows'takiyle birebir aynı korunursa (`jwc/`,
 `adapha-rn/` aynı üst klasörün altında) yolları uyarlamak yeterli.
+
+**WAL checkpoint.** `jwc.db` yanında beliren `jwc.db-wal`/`jwc.db-shm`
+dosyaları ayrı bir veritabanı değil, SQLite WAL modunun otomatik yardımcı
+dosyaları. Her iki servis de kendi bağlantısında `wal_autocheckpoint`'i
+kapatıp günde bir kez elle checkpoint alıyor (kod tarafında ayarlı,
+ekstra kurulum gerekmez) — WAL dosyası gün içinde büyür ama bu veri
+kaybı riski yaratmaz.
 
 ---
 
@@ -138,6 +150,30 @@ görülen), Pi'deki *anlık görüntü sunucusunun* dinlediği port ile
 birlikte (`saha/main.py` bunu ana API portunun +10'u olarak açar — ör.
 API `:8080` ise anlık görüntü `:8090`). Merkez adresi (`JWC_API_URL`)
 buraya **yazılmaz** — o ayrı, `/etc/default/pi-capture-ocr` içinde.
+
+**Neden böyle?** Bir Pi fiziksel olarak başka bir hatta taşınınca
+(`JWC_MACHINE_ID` değiştirilmeden), sadece admin panelinden IP'yi yeni
+makineye atamak yeterli olsun diye:
+
+```mermaid
+sequenceDiagram
+    participant Pi as Raspberry Pi
+    participant M as merkez /ingest
+    participant DB as jwc.db (UygulamaVerisi.piIp)
+
+    Pi->>M: POST /ingest (kaynak IP: 192.168.1.154)
+    M->>DB: SELECT id WHERE piIp = '192.168.1.154'
+    alt IP bir makineye atanmış
+        DB-->>M: "MAK-06"
+        M->>M: veri MAK-06'ya yazılır
+    else IP hiçbir makineye atanmamış
+        DB-->>M: (satır yok)
+        M-->>Pi: 404 — reddedilir
+    end
+```
+
+Pi'nin kendi bildirdiği kimlik hiç kullanılmıyor — admin panelinde bu
+IP'ye karşılık gelen bir makine yoksa istek doğrudan reddedilir.
 
 ---
 
