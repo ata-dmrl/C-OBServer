@@ -173,4 +173,3 @@ bölüm 2.
 
 `/ingest` ve `/api/*` uçlarında kimlik doğrulama yok — fabrika iç ağı
 için şimdilik kabul edilebilir, internete açmadan önce eklenmeli.
-Diğer eksikler için `jwc/README.md` → "Bilinen eksikler" bölümüne bakın.
