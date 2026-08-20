@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 from sqlalchemy import (Boolean, DateTime, Float, Index, Integer,
-                        String, JSON, create_engine, func)
+                        String, JSON, create_engine, event, func, text)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 load_dotenv()
@@ -39,6 +39,20 @@ engine = create_engine(
     connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {},
 )
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+
+if DATABASE_URL.startswith("sqlite"):
+    @event.listens_for(engine, "connect")
+    def _sqlite_pragmalari(dbapi_baglanti, _kayit):
+        """WAL modu (journal_mode) veritabanı dosyasında kalıcıdır, ama
+        busy_timeout ve wal_autocheckpoint BAĞLANTI BAZLIDIR — her yeni
+        bağlantıda yeniden ayarlanmalı. adapha-api (Node) kendi tarafında
+        aynısını yapıyor (bkz. lib/prisma.ts) — ikisi de wal_autocheckpoint'i
+        kapatıp günde bir kez elle checkpoint alıyor (bkz. api.py lifespan).
+        """
+        imlec = dbapi_baglanti.cursor()
+        imlec.execute("PRAGMA busy_timeout=5000")
+        imlec.execute("PRAGMA wal_autocheckpoint=0")
+        imlec.close()
 
 KAYIT_TIPI_YAPILANDIRMA = "YAPILANDIRMA"
 

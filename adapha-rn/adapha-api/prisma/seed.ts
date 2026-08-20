@@ -4,7 +4,6 @@ const prisma = new PrismaClient();
 
 async function main() {
   console.log('Veritabanı temizleniyor...');
-  await prisma.uygulamaTrend.deleteMany();
   await prisma.uygulamaLog.deleteMany();
   await prisma.uygulamaVerisi.deleteMany();
 

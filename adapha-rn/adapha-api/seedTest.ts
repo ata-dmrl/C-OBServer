@@ -16,15 +16,17 @@ async function main() {
       (${bantId}, 'MODEL_DEGISIMI', ${Date.now() - 1 * 3600_000}, ${Date.now() - 1 * 3600_000}, 0, '{"eski": "Type-K", "yeni": "Type-M"}')
   `;
 
-  // Trend (Samples)
-  await prisma.uygulamaTrend.createMany({
-    data: [
-      { bantId, hiz: 140, miktar: 1000, oee: 92.4 },
-      { bantId, hiz: 145, miktar: 2050, oee: 93.1 },
-      { bantId, hiz: 152, miktar: 3200, oee: 94.5 },
-      { bantId, hiz: 148, miktar: 4300, oee: 94.0 },
-    ]
-  });
+  // Trend (Samples) — ayrı bir tablo yok, doğrudan merkez_veri'ye yazılır
+  // (piRestClient.ts samplesGetir() buradan okuyor).
+  const simdi = new Date();
+  await prisma.$executeRaw`
+    INSERT INTO merkez_veri (machine_id, ts, total, good, rate, speed, valid)
+    VALUES
+      (${bantId}, ${new Date(simdi.getTime() - 3 * 60_000).toISOString()}, 1000, 940, 94.0, 140, 1),
+      (${bantId}, ${new Date(simdi.getTime() - 2 * 60_000).toISOString()}, 2050, 1930, 94.1, 145, 1),
+      (${bantId}, ${new Date(simdi.getTime() - 1 * 60_000).toISOString()}, 3200, 3050, 95.3, 152, 1),
+      (${bantId}, ${simdi.toISOString()}, 4300, 4100, 95.3, 148, 1)
+  `;
 
   console.log("Veriler başarıyla eklendi!");
 }

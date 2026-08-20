@@ -33,26 +33,13 @@ model UygulamaVerisi {
 
   sonGuncelleme   DateTime           @default(now())
 
-  trendler        UygulamaTrend[]
   loglar          UygulamaLog[]
 }
 
-// ── Uygulama tarafı — veri: grafik geçmişi (uygulama_verisi'nin alt-parçası) ──
-model UygulamaTrend {
-  id          Int             @id @default(autoincrement())
-  bantId      String
-  timestamp   DateTime        @default(now())
-  hiz         Float?
-  miktar      Int?
-  kaliteOrani Float?
-  oee         Float?
-
-  bant        UygulamaVerisi  @relation(fields: [bantId], references: [id])
-
-  @@unique([bantId, timestamp])
-}
-
 // ── Uygulama tarafı — log: bildirimler / çıkabilecek hatalar ─────────────────
+// (grafik/trend geçmişi ayrı bir tabloda değil — merkezdeki merkez_veri
+// tablosundan ham SQL ile okunuyor, bkz. piRestClient.ts syncSamples();
+// aynı fiziksel veriyi iki tabloda tutmanın anlamı yoktu.)
 model UygulamaLog {
   id          Int             @id @default(autoincrement())
   bantId      String?         // hangi bant/makineyle ilgili — genel bildirimlerde (ör. "merkeze bağlanıldı") null
@@ -64,7 +51,11 @@ model UygulamaLog {
   bant        UygulamaVerisi? @relation(fields: [bantId], references: [id])
 }
 
-// ── Expo Push Token'ları ──────────────────────────────────────────────────────
+// ── Kayıtlı telefonların push bildirim kimlikleri ─────────────────────────────
+// Makine/bant verisiyle ilgisi yok — "hangi telefona bildirim gönderilecek"
+// kaydı. Her telefon uygulamayı ilk açtığında Expo'dan bir token alır, bu
+// tabloya kaydolur; piSync.ts pasif/aktif bildirimi olduğunda buradaki
+// TÜM token'lara push atar (bkz. pushGonder()).
 model PushToken {
   id        Int      @id @default(autoincrement())
   token     String   @unique

@@ -30,12 +30,6 @@ export function bantBildirimDurumunuSifirla(bantId: string) {
 export async function baslatPiSync(io: Server) {
   console.log(`📡 Merkez'e bağlanılıyor: ${MERKEZ_WS_URL}`);
   baglan(io);
-
-  // Analitik grafiğinin akıcı görünmesi için sık aralıklarla snapshot al
-  // (eskiden 15 dakikaydı — grafik "kareli/adım adım" görünüyordu).
-  setInterval(takeTrendSnapshot, 30 * 1000);
-  // Test amaçlı sistemi başlatırken 5 saniye sonra ilk snapshot'ı atalım
-  setTimeout(takeTrendSnapshot, 5000);
 }
 
 function baglan(io: Server) {
@@ -212,24 +206,3 @@ async function bildirimAt(tip: string, olayTipi: string, mesaj: string) {
   }
 }
 
-async function takeTrendSnapshot() {
-  try {
-    const aktifBantlar = await prisma.uygulamaVerisi.findMany({ where: { durum: 'acik' } });
-    if (aktifBantlar.length === 0) return;
-
-    for (const b of aktifBantlar) {
-      await prisma.uygulamaTrend.create({
-        data: {
-          bantId: b.id,
-          hiz: b.anlikHiz,
-          miktar: b.toplamUretim,
-          kaliteOrani: b.qualityOrani,
-          oee: b.oee
-        }
-      });
-    }
-    console.log(`📊 [Trend] ${aktifBantlar.length} aktif makine için geçmiş veri (snapshot) kaydedildi.`);
-  } catch(e) {
-    console.error("Trend snapshot alınırken hata:", e);
-  }
-}

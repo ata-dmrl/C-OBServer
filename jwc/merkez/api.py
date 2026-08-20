@@ -97,10 +97,26 @@ class Hub:
 hub = Hub()
 
 
+async def _gunluk_wal_checkpoint():
+    """wal_autocheckpoint kapalı (bkz. db.py) — WAL dosyasının jwc.db'ye
+    birleşmesi artık otomatik değil, günde bir kez burada elle tetikleniyor.
+    PASSIVE mod süren okuma/yazmayı bloklamaz."""
+    while True:
+        await asyncio.sleep(24 * 60 * 60)
+        try:
+            with D.SessionLocal() as s:
+                s.execute(text("PRAGMA wal_checkpoint(PASSIVE);"))
+                s.commit()
+        except Exception:
+            pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     D.init_db()
+    checkpoint_task = asyncio.create_task(_gunluk_wal_checkpoint())
     yield
+    checkpoint_task.cancel()
 
 
 app = FastAPI(title="JWC Hat İzleme", version="0.1.0", lifespan=lifespan)

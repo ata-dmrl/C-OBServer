@@ -9,83 +9,53 @@ const createClient = (ip: string, port: number = 8100) => axios.create({
 });
 
 /**
- * Pi'deki Trend (Samples) verisini çeker ve veritabanına kaydeder
+ * Trend/grafik verisi merkezin kendi merkez_veri tablosundan okunur — aynı
+ * fiziksel jwc.db dosyasını paylaştığımız için ayrıca HTTP ile çekip ayrı
+ * bir tabloya (eskiden UygulamaTrend) kopyalamaya gerek yok. Bu fonksiyon
+ * artık sadece pi.ts'in kullandığı bir yardımcı: ham SQL ile son N kaydı
+ * döndürür.
  */
-export async function syncSamples(bantId: string, piIp: string, piPort: number = 8000) {
-  try {
-    const api = createClient(piIp, piPort);
-    // Ekranda zaten sadece son 20 kayıt gösteriliyor (bkz. pi.ts /samples),
-    // 2000 örnek çekip tek tek (2000 ayrı sorguyla) yazmanın anlamı yoktu —
-    // bu, analitik ekranının yavaş açılmasının asıl sebebiydi. Son birkaç
-    // dakikalık pencere yeterli, tek seferlik toplu (createMany) yazıyoruz.
-    const res = await api.get(`/machines/${bantId}/samples?hours=8&limit=50`);
-
-    const samples = Array.isArray(res.data) ? res.data : [];
-    const gecerli = samples.filter((s: any) => s.valid !== false);
-
-    if (gecerli.length > 0) {
-      // Prisma'nın SQLite bağlayıcısı createMany'de skipDuplicates
-      // desteklemiyor — SQLite'ın kendi "INSERT OR IGNORE"ını tek seferlik
-      // toplu bir sorguyla kullanıyoruz (aynı bantId+timestamp varsa atlar).
-      // Prisma DateTime alanlarını SQLite'ta ISO metin değil, Unix ms
-      // (INTEGER) olarak saklıyor — .getTime() ile aynı formatı kullanmazsak
-      // aynı ana ait satırlar "farklı" görünüp tekilliği bozabilirdi.
-      const satirlar = gecerli.map((s: any) => Prisma.sql`(
-        ${bantId},
-        ${(s.ts ? new Date(s.ts) : new Date()).getTime()},
-        ${Number(s.speed || 0)},
-        ${Number(s.total || 0)},
-        ${Number(s.rate || 0)}
-      )`);
-      await prisma.$executeRaw`
-        INSERT OR IGNORE INTO "UygulamaTrend" ("bantId", "timestamp", "hiz", "miktar", "kaliteOrani")
-        VALUES ${Prisma.join(satirlar)}
-      `;
-    }
-    return samples;
-  } catch (err: any) {
-    console.error(`❌ [Bant ${bantId}] Samples çekilemedi:`, err.message);
-    return [];
-  }
+export async function samplesGetir(bantId: string, limit: number = 20) {
+  // İki ayrı Prisma+SQLite tuhaflığına takıldık:
+  // 1) LIMIT'i parametre olarak bağlamak "Conversion failed: input contains
+  //    invalid characters" veriyordu — limit hep sabit, dahili bir değer
+  //    olduğu için (kullanıcı girdisi değil) güvenle ham literal gömülüyor.
+  // 2) merkez_veri.ts kolonunu (SQLAlchemy'nin DateTime(timezone=True) ile
+  //    yazdığı, "2026-08-20 08:17:11.803585" gibi metin) OLDUĞU GİBİ
+  //    seçmek de aynı hatayı veriyordu — Prisma'nın motoru kolonu DATETIME
+  //    tipli sanıp kendi tarih ayrıştırıcısıyla okumaya çalışıyor, format
+  //    uyuşmayınca patlıyor. strftime ile Unix ms'ye çevirip INTEGER olarak
+  //    almak bu ayrıştırmayı devre dışı bırakıyor (saniye hassasiyeti
+  //    yeterli, grafik için mikrosaniye gerekmiyor).
+  const rows = await prisma.$queryRaw<
+    { timestamp: bigint; hiz: number | null; miktar: number | null; kaliteOrani: number | null }[]
+  >`
+    SELECT strftime('%s', ts) * 1000 AS "timestamp", speed AS "hiz", total AS "miktar", rate AS "kaliteOrani"
+    FROM merkez_veri
+    WHERE machine_id = ${bantId} AND valid = 1
+    ORDER BY ts DESC
+    LIMIT ${Prisma.raw(String(Math.max(1, Math.floor(limit))))}
+  `;
+  // strftime INTEGER döndürüyor, Prisma bunu BigInt'e eşliyor — JSON.stringify
+  // BigInt'i seri hale getiremediği için Number'a çeviriyoruz.
+  return rows.map(r => ({ ...r, timestamp: Number(r.timestamp) }));
 }
 
 /**
- * Pi'den anlık OEE değerini çeker (ve Trend'e yazar veya ayrı bir işlem yapar)
+ * Pi'den (aslında merkezden — bkz. pi.ts'teki adres notu) anlık OEE değerini
+ * çeker. OEE bellekteki olay motorundan geliyor, ham okumalardan yeniden
+ * hesaplanamaz — bu yüzden hâlâ HTTP ile canlı sorgulanıyor. Artık ayrı bir
+ * tabloya yazılmıyor; en güncel değer zaten her ingest'te
+ * UygulamaVerisi.oee'ye yazılıyor (piSync.ts).
  */
 export async function syncOee(bantId: string, piIp: string, piPort: number = 8000) {
   try {
     const api = createClient(piIp, piPort);
     const res = await api.get(`/machines/${bantId}/oee`);
-    
+
     const oeeData = res.data;
+    // Dönen değer yüzdelik olmalı — merkez 0-1 arası oran gönderiyor.
     const oeeVal = oeeData?.oee ? oeeData.oee * 100 : 0; // 0.886 -> %88.6
-    
-    if (oeeVal > 0) {
-      // Dakika bazında timestamp (saniye ve milisaniye sıfırla)
-      const simdi = new Date();
-      simdi.setSeconds(0, 0);
-
-      await prisma.uygulamaTrend.upsert({
-        where: {
-          bantId_timestamp: {
-            bantId,
-            timestamp: simdi,
-          }
-        },
-        update: {
-          oee: oeeVal,
-        },
-        create: {
-          bantId,
-          timestamp: simdi,
-          oee: oeeVal,
-        }
-      });
-    }
-
-    // Dönen değer de yüzdelik olmalı — merkez 0-1 arası oran gönderiyor,
-    // DB'ye yazarken zaten x100 yapılıyordu ama burada ham haliyle
-    // dönüyordu (uygulamada "%0.96" gibi yanlış görünmesinin sebebi buydu).
     return { ...oeeData, oee: oeeVal };
   } catch (err: any) {
     console.error(`❌ [Bant ${bantId}] OEE çekilemedi:`, err.message);
