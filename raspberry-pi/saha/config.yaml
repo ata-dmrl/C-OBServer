@@ -94,6 +94,11 @@ rois:
     min_confidence: 70
     change_threshold: 1.5
     refresh_interval: 3
+    # total/good ile aynı sebep: hız sürekli değişen bir kadran, "consecutive"
+    # modu (art arda 2 aynı okuma) neredeyse hiç onay veremiyor, bu yüzden
+    # uygulama eski değerde donuk kalıyordu. Okuma zaten whitelist/regex/
+    # min_confidence ile korunuyor, ek bir tutarlılık filtresine gerek yok.
+    stability_mode: none
 
   # ── Yavaş değişen alanlar ──────────────────────────────────────────
   # Model üretim sırasında değişebiliyor ve uygulamada anlık yansıması
