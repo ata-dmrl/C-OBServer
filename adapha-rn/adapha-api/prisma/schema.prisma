@@ -34,6 +34,7 @@ model UygulamaVerisi {
   sonGuncelleme   DateTime           @default(now())
 
   loglar          UygulamaLog[]
+  hataBildirimleri HataBildirimi[]
 }
 
 // ── Uygulama tarafı — log: bildirimler / çıkabilecek hatalar ─────────────────
@@ -60,4 +61,23 @@ model PushToken {
   id        Int      @id @default(autoincrement())
   token     String   @unique
   createdAt DateTime @default(now())
+}
+
+// ── Uygulama tarafı — hata bildirimi: hat durup anlıkHiz 0'a düştüğü an ──────
+// otomatik olarak "bekliyor" durumunda açılan, kullanıcının manuel açıklama
+// girdiği kayıt. Zaman damgası (hataZamani) hızın 0 olduğu an alınır — kullanıcı
+// sadece NEDEN hatalı olduğunu yazar, tarih/saat/makine otomatik belirlenir
+// (bkz. piSync.ts hataliUrunTespitEt()).
+model HataBildirimi {
+  id             Int             @id @default(autoincrement())
+  bantId         String          // hangi makine
+  hataZamani     DateTime        // anlıkHiz'in 0'a düştüğü an
+  durum          String          @default("bekliyor") // bekliyor, aciklandi
+  aciklama       String?         // kullanıcının girdiği hata nedeni — açıklanana kadar boş
+  aciklamaZamani DateTime?       // açıklamanın sisteme girildiği an
+  createdAt      DateTime        @default(now())
+
+  bant           UygulamaVerisi  @relation(fields: [bantId], references: [id])
+
+  @@index([bantId, durum])
 }

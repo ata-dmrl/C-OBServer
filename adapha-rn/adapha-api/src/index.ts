@@ -10,6 +10,7 @@ import analitikRouter from "./routes/analitik";
 import piRouter from "./routes/pi";
 import adminRouter from "./routes/admin";
 import pushRouter from "./routes/push";
+import hataBildirimleriRouter from "./routes/hataBildirimleri";
 import { baslatPiSync } from "./services/piSync";
 
 const app = express();
@@ -45,6 +46,7 @@ app.use("/api/analitik", analitikRouter);
 app.use("/api/pi", piRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/push", pushRouter);
+app.use("/api/hata-bildirimleri", hataBildirimleriRouter);
 
 // ── Bağlantı Kontrolü (Ping-Pong) ──────────────────────────────────────────
 app.get("/api/ping", (_req, res) => {

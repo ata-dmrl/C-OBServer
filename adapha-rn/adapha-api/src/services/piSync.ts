@@ -20,6 +20,12 @@ let lastConnStatus: "baglandi" | "koptu" | null = null;
 // çırpınma olursa (ör. hız okuması gürültülüyse) bildirim spam'ine düşülmesin.
 const lastMachineNotif = new Map<string, "pasif" | "aktif">();
 
+// Bant başına en son bilinen anlık hız — hız >0'dan 0'a geçişi (hattın
+// durduğu, hatalı ürünün çıktığı an) yakalamak için. cihaz_durumu'ndaki DURUS
+// olayı stall_seconds kadar gecikmeli geliyor; bu, kullanıcının istediği gibi
+// "hız 0 olduğu an"ı ANINDA yakalayan, ondan bağımsız ayrı bir tetikleyici.
+const lastSpeedByMachine = new Map<string, number>();
+
 // Bir bandın Pi IP'si değiştiğinde (admin.ts) çağrılır: eski atamadan kalan
 // pasif/aktif durumu temizlenmezse, yeni atamadaki İLK gerçek "pasif"
 // bildirimi -- eski durumla tesadüfen aynı geldiği için -- sessizce yutulabiliyordu.
@@ -61,7 +67,15 @@ function baglan(io: Server) {
       // Pi henüz bir alanı hiç okumadıysa null gönderiyor — bunu 0/boş olarak
       // yazıp önceki iyi değeri ezmemek için "!= null" (hem null hem
       // undefined'ı eler), sadece "!== undefined" değil.
-      if (payload.speed != null) guncellenecekVeri.anlikHiz = Number(payload.speed);
+      if (payload.speed != null) {
+        const yeniHiz = Number(payload.speed);
+        guncellenecekVeri.anlikHiz = yeniHiz;
+        const eskiHiz = lastSpeedByMachine.get(bantId);
+        if (eskiHiz !== undefined && eskiHiz > 0 && yeniHiz === 0) {
+          await hataliUrunTespitEt(bantId, io);
+        }
+        lastSpeedByMachine.set(bantId, yeniHiz);
+      }
       if (payload.total != null) guncellenecekVeri.toplamUretim = Number(payload.total);
       if (payload.good != null) guncellenecekVeri.iyiUretim = Number(payload.good);
       if (payload.rate != null) guncellenecekVeri.sertifikaOrani = Number(payload.rate);
@@ -137,6 +151,27 @@ function baglan(io: Server) {
     console.error(`⚠️ Merkez WebSocket hatası:`, err.message);
     ws?.close(); // tetiklenince on("close") çalışıp reconnect yapacak
   });
+}
+
+// Hattın anlık hızı >0'dan 0'a düştüğü an çağrılır — "hatalı ürün çıktı" anı.
+// Kullanıcının makine sayfasından gireceği açıklamayı bekleyen bir kayıt açar.
+// Aynı makine için zaten açıklama bekleyen bir kayıt varsa (kullanıcı henüz
+// girmediyse) tekrar açmıyoruz — yoksa kısa aralıklı duruş/kalkışlarda
+// (hız gürültüsü) her seferinde yeni bir bekleyen kayıt birikirdi.
+async function hataliUrunTespitEt(bantId: string, io: Server) {
+  try {
+    const bekleyen = await prisma.hataBildirimi.findFirst({
+      where: { bantId, durum: "bekliyor" },
+    });
+    if (bekleyen) return;
+
+    const yeniKayit = await prisma.hataBildirimi.create({
+      data: { bantId, hataZamani: new Date(), durum: "bekliyor" },
+    });
+    io.emit("hata_bildirimi_olustu", yeniKayit);
+  } catch (e) {
+    console.warn("⚠️ Hata bildirimi kaydı oluşturulamadı:", e);
+  }
 }
 
 // Merkezden gelen bir olayı (events.py -> EventType) bildirime çevirir.

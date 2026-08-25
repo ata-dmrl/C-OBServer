@@ -49,6 +49,17 @@ export interface Bant {
   oeeUretimIyi?: number;
 }
 
+export interface HataBildirimi {
+  id: number;
+  bantId: string;
+  hataZamani: string;
+  durum: "bekliyor" | "aciklandi";
+  aciklama?: string | null;
+  aciklamaZamani?: string | null;
+  createdAt: string;
+  bant?: { id: string; isim: string; hatAdi?: string };
+}
+
 // ── Sunucu IP Adresi (Dinamik) ──
 const DEFAULT_SERVER = "http://192.168.1.187:3000";
 const serverUrl = Constants.expoConfig?.extra?.serverUrl || DEFAULT_SERVER;
@@ -106,6 +117,65 @@ export const getPiOee = async (bantId: string) => {
   }
 };
 
+
+// ── Hata Bildirimleri (Kalite) ──────────────────────────────────────────────
+// Hat durup anlıkHiz 0'a düştüğü an sunucu otomatik olarak "bekliyor"
+// durumunda bir kayıt açar (bkz. adapha-api piSync.ts hataliUrunTespitEt).
+// Burada sadece kullanıcının gireceği açıklamayı gönderiyoruz.
+
+export async function bekleyenHataBildirimleriniCek(): Promise<HataBildirimi[]> {
+  try {
+    const res = await fetch(`${API_URL}/hata-bildirimleri/bekleyenler`);
+    if (!res.ok) throw new Error("Bekleyen hata bildirimleri çekilemedi");
+    return await res.json();
+  } catch (error) {
+    console.error("Bekleyen hata bildirimleri çekilemedi:", error);
+    return [];
+  }
+}
+
+export async function hataBildirimDetayiniCek(id: number): Promise<HataBildirimi | null> {
+  try {
+    const res = await fetch(`${API_URL}/hata-bildirimleri/${id}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (error) {
+    console.error("Hata bildirimi detayı çekilemedi:", error);
+    return null;
+  }
+}
+
+export async function hataAciklamasiGonder(id: number, aciklama: string): Promise<HataBildirimi> {
+  const res = await fetch(`${API_URL}/hata-bildirimleri/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ aciklama }),
+  });
+  if (!res.ok) throw new Error("Açıklama gönderilemedi.");
+  return await res.json();
+}
+
+// Çoklu seçim: aynı açıklama, seçilen her makineye AYRI kayıt olarak işlenir.
+export async function topluHataAciklamasiGonder(ids: number[], aciklama: string): Promise<{ ok: boolean; guncellenen: number }> {
+  const res = await fetch(`${API_URL}/hata-bildirimleri/toplu/gonder`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids, aciklama }),
+  });
+  if (!res.ok) throw new Error("Toplu açıklama gönderilemedi.");
+  return await res.json();
+}
+
+export async function hataRaporunuCek(): Promise<HataBildirimi[]> {
+  try {
+    const res = await fetch(`${API_URL}/hata-bildirimleri/rapor/liste`);
+    if (!res.ok) throw new Error("Hata raporu verisi çekilemedi");
+    return await res.json();
+  } catch (error) {
+    console.error("Hata raporu verisi çekilemedi:", error);
+    return [];
+  }
+}
 
 // ── Grafik verisi ────────────────────────────────────────────────────────────
 // NOT: Analiz ekranlarındaki detaylı grafiklerin verileri de API'den gelecek şekilde ayarlandı.
