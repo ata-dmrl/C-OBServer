@@ -21,7 +21,7 @@ Start-Sleep -Seconds 3
 Write-Host "3/3 Expo baslatiliyor (port 8081)..." -ForegroundColor Cyan
 Start-Process powershell -ArgumentList @(
     "-NoExit", "-Command",
-    "cd '$kok\adapha-rn\adapha-rn'; `$env:REACT_NATIVE_PACKAGER_HOSTNAME='192.168.1.127'; npx expo start --go"
+    "cd '$kok\adapha-rn\adapha-rn'; `$env:REACT_NATIVE_PACKAGER_HOSTNAME='172.20.10.3'; npx expo start --go"
 )
 
 Write-Host ""

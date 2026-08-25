@@ -16,7 +16,7 @@ model UygulamaVerisi {
   durum           String             @default("kapali") // acik, kapali
   anlikHiz        Float?             // birim/dakika
   kameraUrl       String?            // piIp/piPort'tan otomatik türetilir (http://piIp:piPort/frame.jpg)
-  piIp            String?            // Bu bandı izleyen Raspberry Pi'nin kendi IP'si, ör. "192.168.1.154"
+  piIp            String?            // Bu bandı izleyen Raspberry Pi'nin kendi IP'si, ör. "172.20.10.2"
   piPort          Int?               @default(8090) // Pi'deki anlık görüntü sunucusunun portu
   mevcutModel     String?            // "Tip-M"
   toplamUretim    Int?               // 43624
