@@ -1,17 +1,20 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, StatusBar, StyleSheet, Platform, TouchableOpacity, DeviceEventEmitter } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
-import { Home, Package, BarChart2, Bell, RefreshCw, AlignLeft } from "lucide-react-native";
+import { Home, Package, BarChart2, Bell, RefreshCw, AlignLeft, AlertTriangle } from "lucide-react-native";
 import { C } from "./constants/colors";
 import HomeScreen from "./screens/HomeScreen";
 import UretimEkrani from "./screens/UretimEkrani";
 import AnalizEkrani from "./screens/AnalizEkrani";
 import AdminEkrani from "./screens/AdminEkrani";
 import BildirimlerEkrani from "./screens/BildirimlerEkrani";
+import HataBildirimleriEkrani from "./screens/HataBildirimleriEkrani";
+import HataBildirimDetayEkrani from "./screens/HataBildirimDetayEkrani";
+import HataRaporuEkrani from "./screens/HataRaporuEkrani";
 import { GlobalNotification } from "./components/GlobalNotification";
-import { socket } from "./services/api";
+import { socket, bekleyenHataBildirimleriniCek } from "./services/api";
 import { useNavigation } from "@react-navigation/native";
 import Constants from "expo-constants";
 
@@ -56,6 +59,21 @@ function AppHeader() {
 }
 
 export default function App() {
+  // Açıklama bekleyen hata bildirimi var mı? (hat hızı 0'a düştüğünde
+  // sunucu otomatik bir kayıt açar — bkz. adapha-api piSync.ts). Uygulama
+  // açılışında mevcut bekleyenleri kontrol eder, sonrasında canlı soket
+  // olayıyla güncellenir; "Hata Girişi" sekmesine gidince temizlenir.
+  const [bekleyenHataVar, setBekleyenHataVar] = useState(false);
+
+  useEffect(() => {
+    bekleyenHataBildirimleriniCek().then((liste) => {
+      if (liste.length > 0) setBekleyenHataVar(true);
+    });
+    const yeniHataGeldi = () => setBekleyenHataVar(true);
+    socket.on("hata_bildirimi_olustu", yeniHataGeldi);
+    return () => { socket.off("hata_bildirimi_olustu", yeniHataGeldi); };
+  }, []);
+
   useEffect(() => {
     // "expo-notifications" import edildiği anda (fonksiyon hiç çağrılmasa
     // bile) kendi otomatik token-kayıt özelliğini tetikliyor ve Android +
@@ -89,6 +107,12 @@ export default function App() {
                 if (route.name === "AnaSayfa") return <Home size={size} color={color} />;
                 if (route.name === "Üretim") return <Package size={size} color={color} />;
                 if (route.name === "Analitikler") return <BarChart2 size={size} color={color} />;
+                if (route.name === "HataGirisi") return (
+                  <View>
+                    <AlertTriangle size={size} color={color} />
+                    {bekleyenHataVar && <View style={styles.tabBadgeDot} />}
+                  </View>
+                );
               },
               tabBarItemStyle: styles.tabItem,
             })}
@@ -96,8 +120,16 @@ export default function App() {
             <Tab.Screen name="AnaSayfa" component={HomeScreen} options={{ title: "Ana Sayfa" }} />
             <Tab.Screen name="Üretim" component={UretimEkrani} options={{ title: "Üretim" }} />
             <Tab.Screen name="Analitikler" component={AnalizEkrani} options={{ title: "Analitikler" }} />
+            <Tab.Screen
+              name="HataGirisi"
+              component={HataBildirimleriEkrani}
+              options={{ title: "Hata Girişi" }}
+              listeners={{ tabPress: () => setBekleyenHataVar(false) }}
+            />
             <Tab.Screen name="Admin" component={AdminEkrani} options={{ tabBarButton: () => null, tabBarItemStyle: { display: "none" } }} />
             <Tab.Screen name="Bildirimler" component={BildirimlerEkrani} options={{ tabBarButton: () => null, tabBarItemStyle: { display: "none" } }} />
+            <Tab.Screen name="HataBildirimDetay" component={HataBildirimDetayEkrani} options={{ tabBarButton: () => null, tabBarItemStyle: { display: "none" } }} />
+            <Tab.Screen name="HataRaporu" component={HataRaporuEkrani} options={{ tabBarButton: () => null, tabBarItemStyle: { display: "none" } }} />
           </Tab.Navigator>
         </View>
       </NavigationContainer>
@@ -125,6 +157,7 @@ const styles = StyleSheet.create({
   menuBtn: { width: 32, height: 32, borderRadius: 12, backgroundColor: C.peachLt, justifyContent: "center", alignItems: "center" },
   iconBtn: { width: 32, height: 32, borderRadius: 12, backgroundColor: C.peachLt, justifyContent: "center", alignItems: "center" },
   bildirimNoktasi: { position: "absolute", top: 6, right: 6, width: 8, height: 8, borderRadius: 4, backgroundColor: C.red, borderWidth: 1.5, borderColor: "white" },
+  tabBadgeDot: { position: "absolute", top: -3, right: -6, width: 8, height: 8, borderRadius: 4, backgroundColor: C.red, borderWidth: 1.5, borderColor: "white" },
   platformTag: { fontSize: 8.5, letterSpacing: 2, textTransform: "uppercase", fontWeight: "500", color: C.muted },
   companyName: { fontSize: 12.5, fontWeight: "800", color: C.text },
   tabBar: {

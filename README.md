@@ -64,8 +64,8 @@ dokunmadan sadece admin panelinden IP'yi yeni makineye atamak yeterli.
 
 ## Veritabanı
 
-Tek dosya (`jwc/data/jwc.db`), **5 tablo** — 2'si Python/SQLAlchemy
-(merkez), 3'ü Node/Prisma (adapha-api) tarafından yönetiliyor, ama
+Tek dosya (`jwc/data/jwc.db`), **6 tablo** — 2'si Python/SQLAlchemy
+(merkez), 4'ü Node/Prisma (adapha-api) tarafından yönetiliyor, ama
 aynı fiziksel dosyada yaşadıkları için gerektiğinde birbirininkini de
 ham SQL ile okuyabiliyorlar (ör. admin panelinin IP ataması,
 `UygulamaVerisi.piIp`, merkezin `/ingest`'te kimlik tespiti için okuduğu
@@ -74,6 +74,7 @@ tablo).
 ```mermaid
 erDiagram
     UygulamaVerisi ||--o{ UygulamaLog : "bantId"
+    UygulamaVerisi ||--o{ HataBildirimi : "bantId"
 
     UygulamaVerisi {
         string id PK "MAK-01 — admin panelinden yönetilen makine kimliği"
@@ -86,6 +87,13 @@ erDiagram
         string bantId FK "null ise genel bildirim (ör. bağlantı koptu)"
         string tip "bilgi / hata"
         string mesaj
+    }
+    HataBildirimi {
+        int id PK
+        string bantId FK "hangi makine"
+        datetime hataZamani "anlıkHiz'in 0'a düştüğü an"
+        string durum "bekliyor / aciklandi"
+        string aciklama "kullanıcının girdiği hata nedeni"
     }
     merkez_veri {
         int id PK
@@ -112,10 +120,12 @@ erDiagram
 | `UygulamaVerisi` | adapha-api (Prisma) | **veri** | Her makinenin canlı durumu — mobilde görünen tüm sayılar, IP/port, kamera URL'i |
 | `UygulamaLog` | adapha-api (Prisma) | **log** | Bildirim geçmişi (pasif/aktif geçişleri, bağlantı olayları) |
 | `PushToken` | adapha-api (Prisma) | (kayıt) | Hangi telefona push bildirimi gönderileceği — makine/log verisiyle ilgisi yok |
+| `HataBildirimi` | adapha-api (Prisma) | **veri** | Hat durup anlık hız 0'a düştüğü anda otomatik açılan, kullanıcının hata nedenini girdiği kalite kaydı — hata raporu (PDF) bu tablodan üretilir |
 
-Eskiden bir 6. tablo (`UygulamaTrend`) vardı — merkezin `/machines/{id}/samples`
+Eskiden bir başka 6. tablo (`UygulamaTrend`) vardı — merkezin `/machines/{id}/samples`
 ucundan HTTP ile çekilen veriyi ikinci kez saklıyordu. Aynı veri zaten
 `merkez_veri`'de olduğu için kaldırıldı; grafik artık doğrudan oradan okunuyor.
+Şimdiki 6. tablo (`HataBildirimi`) farklı bir amaca hizmet ediyor — bkz. yukarı.
 
 **WAL modu ve checkpoint.** `jwc.db` yanında `jwc.db-wal`/`jwc.db-shm`
 görülür — SQLite'ın WAL modunun otomatik yardımcı dosyaları (merkez ve

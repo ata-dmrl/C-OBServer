@@ -21,7 +21,7 @@ flowchart LR
     API -- "REST + Socket.IO" --> Mobil
 ```
 
-Veritabanı şemasının (5 tablo, kim neyi yönetiyor) ayrıntısı için bkz.
+Veritabanı şemasının (6 tablo, kim neyi yönetiyor) ayrıntısı için bkz.
 kök `README.md` → "Veritabanı" bölümü.
 
 Tek depo (`github.com/ata-dmrl/C-OBServer`), üç ana klasör:
