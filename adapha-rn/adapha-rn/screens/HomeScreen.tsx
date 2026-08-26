@@ -12,7 +12,7 @@ import { C } from "../constants/colors";
 import { Card, SH } from "../components/Card";
 import { BantDurumuPaneli } from "../components/BantDurumuPaneli";
 import ModalBottomSheet from "../components/ModalBottomSheet";
-import { hizProfili, aylikUretim, programVerisi, dashboardOzetiniCek, bantVerisiniCek, socket, Bant } from "../services/api";
+import { hizProfili, aylikUretim, programVerisi, dashboardOzetiniCek, bantVerisiniCek, bekleyenHataBildirimleriniCek, socket, Bant } from "../services/api";
 import { ChevronLeft } from "lucide-react-native";
 
 const W = Dimensions.get("window").width;
@@ -200,17 +200,24 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [aktifProgramFiltre, setAktifProgramFiltre] = useState("Tümü");
   const [seciliBant, setSeciliBant] = useState<Bant | null>(null);
+  // "Kalite Kontrol Aktif" kartındaki "İnceleme Bekleyen (Hatalı) Birimler"
+  // sayısı - eskiden buraya yanlışlıkla ham fire miktarı (hataliUretim,
+  // toplam-iyi farkı) yazılıyordu; etiketle hiç alakası yoktu. Gerçek
+  // bekleyen inceleme sayısı hata_bildirimi tablosundan geliyor.
+  const [bekleyenSayisi, setBekleyenSayisi] = useState(0);
 
   useEffect(() => {
     // 1. İlk yüklemede API'den gerçek veriyi çek
     const verileriCek = async () => {
       setLoading(true);
-      const [ozetVeri, bantVeri] = await Promise.all([
+      const [ozetVeri, bantVeri, bekleyenler] = await Promise.all([
         dashboardOzetiniCek(),
-        bantVerisiniCek()
+        bantVerisiniCek(),
+        bekleyenHataBildirimleriniCek()
       ]);
       setOzet(ozetVeri);
       setBantlar(bantVeri);
+      setBekleyenSayisi(bekleyenler.length);
       setLoading(false);
     };
 
@@ -259,9 +266,19 @@ export default function HomeScreen() {
       });
     });
 
+    // 4. Yeni hata bildirimi açılınca / açıklanınca sayaç anında güncellensin
+    socket.on("hata_bildirimi_olustu", () => {
+      setBekleyenSayisi(n => n + 1);
+    });
+    socket.on("hata_bildirimi_aciklandi", () => {
+      setBekleyenSayisi(n => Math.max(0, n - 1));
+    });
+
     return () => {
       socket.off("bant_hiz_guncelleme");
       socket.off("bant_guncellendi");
+      socket.off("hata_bildirimi_olustu");
+      socket.off("hata_bildirimi_aciklandi");
       refreshListener.remove();
     };
   }, []);
@@ -443,7 +460,7 @@ export default function HomeScreen() {
               <Text style={[s.perfVal, { color: C.text }]}>Kalite Kontrol Aktif</Text>
             </View>
             <Text style={s.perfLabel}>İnceleme Bekleyen (Hatalı) Birimler</Text>
-            <Text style={[s.statNum, { color: C.peach, marginTop: 4 }]}>{hataliUretim} birim</Text>
+            <Text style={[s.statNum, { color: C.peach, marginTop: 4 }]}>{bekleyenSayisi} birim</Text>
           </View>
           <View style={[s.badge, { backgroundColor: C.peachLt }]}>
             <Text style={[s.badgeText, { color: C.peach }]}>%{hataOrani.toFixed(2)}</Text>
