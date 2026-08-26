@@ -114,7 +114,16 @@ rois:
     min_confidence: 70
     change_threshold: 10.0
     refresh_interval: 10
-    stability_mode: none
+    # speed/total/good'un aksine model UZUN SÜRE SABİT kalıp arada bir
+    # değişen bir alan - "none" modunda (hiç onay beklemeden ilk okumayı
+    # anında kabul etme) ekrandaki geçiş animasyonunun (fade/slide) tam
+    # ortasındaki yarı-render kareyi yakalayıp "S"/"A"/"X" gibi anlamsız
+    # tek harfleri de anında değer olarak kabul ediyordu. "consecutive"
+    # (art arda 2 aynı okuma) bu tek seferlik geçiş karesini filtreler;
+    # gerçek yeni değer birkaç kare sonra zaten tutarlı okunacağı için
+    # gecikme önemsiz kalır.
+    stability_mode: consecutive
+    consecutive_required: 2
 
   - id: rate
     x: 1380
