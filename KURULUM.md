@@ -161,8 +161,8 @@ sequenceDiagram
     participant M as merkez /ingest
     participant DB as jwc.db (UygulamaVerisi.piIp)
 
-    Pi->>M: POST /ingest (kaynak IP: 192.168.1.154)
-    M->>DB: SELECT id WHERE piIp = '192.168.1.154'
+    Pi->>M: POST /ingest (kaynak IP: 172.20.10.2)
+    M->>DB: SELECT id WHERE piIp = '172.20.10.2'
     alt IP bir makineye atanmış
         DB-->>M: "MAK-06"
         M->>M: veri MAK-06'ya yazılır

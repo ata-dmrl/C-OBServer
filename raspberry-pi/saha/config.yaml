@@ -94,6 +94,11 @@ rois:
     min_confidence: 70
     change_threshold: 1.5
     refresh_interval: 3
+    # total/good ile aynı sebep: hız sürekli değişen bir kadran, "consecutive"
+    # modu (art arda 2 aynı okuma) neredeyse hiç onay veremiyor, bu yüzden
+    # uygulama eski değerde donuk kalıyordu. Okuma zaten whitelist/regex/
+    # min_confidence ile korunuyor, ek bir tutarlılık filtresine gerek yok.
+    stability_mode: none
 
   # ── Yavaş değişen alanlar ──────────────────────────────────────────
   # Model üretim sırasında değişebiliyor ve uygulamada anlık yansıması
@@ -109,7 +114,16 @@ rois:
     min_confidence: 70
     change_threshold: 10.0
     refresh_interval: 10
-    stability_mode: none
+    # speed/total/good'un aksine model UZUN SÜRE SABİT kalıp arada bir
+    # değişen bir alan - "none" modunda (hiç onay beklemeden ilk okumayı
+    # anında kabul etme) ekrandaki geçiş animasyonunun (fade/slide) tam
+    # ortasındaki yarı-render kareyi yakalayıp "S"/"A"/"X" gibi anlamsız
+    # tek harfleri de anında değer olarak kabul ediyordu. "consecutive"
+    # (art arda 2 aynı okuma) bu tek seferlik geçiş karesini filtreler;
+    # gerçek yeni değer birkaç kare sonra zaten tutarlı okunacağı için
+    # gecikme önemsiz kalır.
+    stability_mode: consecutive
+    consecutive_required: 2
 
   - id: rate
     x: 1380

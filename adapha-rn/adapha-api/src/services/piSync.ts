@@ -103,6 +103,13 @@ function baglan(io: Server) {
         case "DURDU":
           guncellenecekVeri.durum = "kapali";
           guncellenecekVeri.baglantiDurumu = "ONLINE";
+          // Duruş tespiti güvenilir sayaca (total) dayanıyor, ama anlık hız
+          // yukarıda ayrı ve bağımsız olarak analog kadran OCR'ından geliyor —
+          // gürültülü olduğu için (test: aynı üretim penceresinde 0/2/7/27/198
+          // gibi dağınık değerler görüldü) makine gerçekten durduğunda bile
+          // sıfır olmayan bir değer taşıyabiliyordu. Durum "kapali" olduğunda
+          // ekranda gösterilen hız da bununla tutarlı olsun diye sıfırlıyoruz.
+          guncellenecekVeri.anlikHiz = 0;
           break;
         case "SINYAL_YOK":
         case "BILINMIYOR":
