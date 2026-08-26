@@ -18,7 +18,7 @@ import { useNavigation } from "@react-navigation/native";
 const W = Dimensions.get("window").width;
 
 // Basit SVG Radar – react-native-svg
-import Svg, { Polygon, Line, Text as SvgText, Circle } from "react-native-svg";
+import Svg, { Polygon, Line, Text as SvgText } from "react-native-svg";
 function RadarGraf({ data }: { data: any[] }) {
   const cx = 110, cy = 100, r = 70;
   if (!data || data.length === 0) return null;
@@ -60,74 +60,87 @@ function RadarGraf({ data }: { data: any[] }) {
   );
 }
 
-// Halka (donut) grafik — kalite dağılımı gibi oranları göstermek için.
-// Standart SVG tekniği: her dilim için strokeDasharray/strokeDashoffset,
-// -90° döndürerek saat 12 yönünden başlatılıyor.
-function DonutGraf({ segments, merkezEtiket, merkezDeger }: { segments: { pct: number; color: string }[]; merkezEtiket: string; merkezDeger: string }) {
-  const size = 132, strokeWidth = 20;
-  const r = (size - strokeWidth) / 2;
-  const c = size / 2;
-  const cevre = 2 * Math.PI * r;
-  let birikimPct = 0;
-  return (
-    <View style={{ alignItems: "center", justifyContent: "center" }}>
-      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <Circle cx={c} cy={c} r={r} stroke={C.border} strokeWidth={strokeWidth} fill="none" />
-        {segments.filter(s => s.pct > 0.01).map((s, i) => {
-          const dilimUzunlugu = (s.pct / 100) * cevre;
-          const offset = -((birikimPct / 100) * cevre);
-          birikimPct += s.pct;
-          return (
-            <Circle
-              key={i}
-              cx={c} cy={c} r={r}
-              stroke={s.color}
-              strokeWidth={strokeWidth}
-              fill="none"
-              strokeDasharray={`${dilimUzunlugu} ${cevre - dilimUzunlugu}`}
-              strokeDashoffset={offset}
-              strokeLinecap="butt"
-              transform={`rotate(-90 ${c} ${c})`}
-            />
-          );
-        })}
-      </Svg>
-      <View style={{ position: "absolute", alignItems: "center" }}>
-        <Text style={{ fontSize: 20, fontWeight: "800", color: C.text }}>{merkezDeger}</Text>
-        <Text style={{ fontSize: 8.5, color: C.muted, marginTop: 1 }}>{merkezEtiket}</Text>
-      </View>
-    </View>
-  );
-}
-
-// Sıralı yatay bar listesi — "hangi makine daha fazla" tarzı karşılaştırmalar için.
-function SiraliBarListesi({ data, renk, birim, madalyaGoster = true }: { data: { label: string; deger: number }[]; renk: string; birim?: string; madalyaGoster?: boolean }) {
-  if (!data || data.length === 0) {
-    return <Text style={{ fontSize: 11, color: C.muted, paddingVertical: 16, textAlign: "center" }}>Henüz veri yok.</Text>;
-  }
-  const max = Math.max(1, ...data.map(d => d.deger));
-  const madalya = (i: number) => !madalyaGoster ? "" : i === 0 ? "🥇 " : i === 1 ? "🥈 " : i === 2 ? "🥉 " : "";
-  return (
-    <View style={{ gap: 12 }}>
-      {data.map((d, i) => (
-        <View key={`${d.label}-${i}`}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-            <Text style={{ fontSize: 10.5, fontWeight: "600", color: C.text }}>{madalya(i)}{d.label}</Text>
-            <Text style={{ fontSize: 10.5, fontWeight: "700", color: renk }}>{d.deger.toLocaleString("tr-TR")}{birim || ""}</Text>
-          </View>
-          <View style={{ height: 8, borderRadius: 99, backgroundColor: "#D8E6F0", overflow: "hidden" }}>
-            <View style={{ height: "100%", width: `${Math.max(2, (d.deger / max) * 100)}%`, backgroundColor: renk, borderRadius: 99 }} />
-          </View>
-        </View>
-      ))}
-    </View>
-  );
-}
-
 const AY_KISALTMA = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
 function ayEtiketi(ay: string): string {
   const [yil, ayNo] = ay.split("-");
   return `${AY_KISALTMA[Number(ayNo) - 1] || ayNo} '${yil.slice(2)}`;
+}
+
+// PDF raporu (expo-print, WebView tabanlı) React Native SVG bileşenlerini
+// değil ham HTML/SVG string'i render ediyor — bu yüzden ekrandan kaldırılan
+// 4 grafik burada aynı görsel mantıkla (halka: strokeDasharray/offset,
+// bar listesi: yüzde genişlikli div, çizgi grafiği: polyline + noktalar)
+// düz string olarak yeniden üretiliyor.
+function donutSvgUret(segments: { pct: number; color: string }[], merkezDeger: string, merkezEtiket: string): string {
+  const size = 150, strokeWidth = 22;
+  const r = (size - strokeWidth) / 2;
+  const c = size / 2;
+  const cevre = 2 * Math.PI * r;
+  let birikim = 0;
+  const dilimler = segments.filter(s => s.pct > 0.01).map(s => {
+    const uzunluk = (s.pct / 100) * cevre;
+    const offset = -((birikim / 100) * cevre);
+    birikim += s.pct;
+    return `<circle cx="${c}" cy="${c}" r="${r}" stroke="${s.color}" stroke-width="${strokeWidth}" fill="none" stroke-dasharray="${uzunluk.toFixed(2)} ${(cevre - uzunluk).toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}" transform="rotate(-90 ${c} ${c})" />`;
+  }).join("");
+  return `
+    <div style="position:relative; width:${size}px; height:${size}px;">
+      <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+        <circle cx="${c}" cy="${c}" r="${r}" stroke="#E1E7EF" stroke-width="${strokeWidth}" fill="none" />
+        ${dilimler}
+      </svg>
+      <div style="position:absolute; top:0; left:0; width:${size}px; height:${size}px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+        <div style="font-size:22px; font-weight:800; color:#1A3A5C;">${merkezDeger}</div>
+        <div style="font-size:9px; color:#5E7389;">${merkezEtiket}</div>
+      </div>
+    </div>
+  `;
+}
+
+function barListeHtmlUret(data: { label: string; deger: number }[], renk: string, birim: string = ""): string {
+  if (!data || data.length === 0) {
+    return `<p style="color:#9CA9B8; text-align:center;">Henüz veri yok.</p>`;
+  }
+  const max = Math.max(1, ...data.map(d => d.deger));
+  return data.map(d => `
+    <div style="margin-bottom:10px;">
+      <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:3px;">
+        <span style="font-weight:600; color:#1A3A5C;">${d.label}</span>
+        <span style="font-weight:700; color:${renk};">${d.deger.toLocaleString("tr-TR")}${birim}</span>
+      </div>
+      <div style="height:8px; border-radius:99px; background:#D8E6F0; overflow:hidden;">
+        <div style="height:100%; width:${Math.max(2, (d.deger / max) * 100)}%; background:${renk}; border-radius:99px;"></div>
+      </div>
+    </div>
+  `).join("");
+}
+
+function cizgiGrafikSvgUret(noktalar: { etiket: string; deger: number }[], renk: string): string {
+  if (!noktalar || noktalar.length === 0) {
+    return `<p style="color:#9CA9B8; text-align:center;">Henüz aylık üretim verisi birikmedi.</p>`;
+  }
+  const w = 500, h = 160, padL = 20, padR = 20, padT = 15, padB = 30;
+  const max = Math.max(1, ...noktalar.map(n => n.deger));
+  const usableW = w - padL - padR;
+  const usableH = h - padT - padB;
+  const stepX = noktalar.length > 1 ? usableW / (noktalar.length - 1) : 0;
+  const xy = noktalar.map((n, i) => ({
+    x: padL + (noktalar.length > 1 ? i * stepX : usableW / 2),
+    y: padT + usableH - (n.deger / max) * usableH,
+  }));
+  const yol = xy.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
+  const noktaSvg = xy.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="${renk}" />`).join("");
+  const etiketSvg = noktalar.map((n, i) =>
+    `<text x="${xy[i].x.toFixed(1)}" y="${h - 8}" font-size="9" fill="#5E7389" text-anchor="middle">${n.etiket}</text>`
+  ).join("");
+  return `
+    <svg width="100%" viewBox="0 0 ${w} ${h}" style="max-width:${w}px;">
+      <line x1="${padL}" y1="${(padT + usableH).toFixed(1)}" x2="${w - padR}" y2="${(padT + usableH).toFixed(1)}" stroke="#E1E7EF" stroke-width="1" />
+      <path d="${yol}" fill="none" stroke="${renk}" stroke-width="2.5" />
+      ${noktaSvg}
+      ${etiketSvg}
+    </svg>
+  `;
 }
 
 // Isı haritası rengi
@@ -271,6 +284,24 @@ export default function AnalizEkrani() {
         `;
       }).join('') : `<tr><td colspan="5" style="text-align:center;">Aktif hat bulunamadı.</td></tr>`;
 
+      const kaliteDonutSvg = donutSvgUret(
+        [
+          { pct: gectiPct, color: "#2F9C95" },
+          { pct: uyariPct, color: "#2E6DA8" },
+          { pct: redPct, color: "#E76F51" },
+        ],
+        `%${gecti}`, "Sertifikalı"
+      );
+      const makineUretimBarHtml = barListeHtmlUret(
+        makineUretimi.map(m => ({ label: m.isim, deger: m.toplamUretim })), "#2E6DA8"
+      );
+      const hataSayisiBarHtml = barListeHtmlUret(
+        hataSayilari.map(h => ({ label: h.isim, deger: h.adet })), "#E76F51", " hata"
+      );
+      const aylikUretimSvg = cizgiGrafikSvgUret(
+        aylikUretim.map(a => ({ etiket: ayEtiketi(a.ay), deger: a.uretim })), "#2E6DA8"
+      );
+
       const dateStr = new Date().toLocaleString("tr-TR");
       const htmlContent = `
         <html>
@@ -322,6 +353,18 @@ export default function AnalizEkrani() {
               </tbody>
             </table>
 
+            <h2>Ürün Kalite Dağılımı</h2>
+            <div style="display:flex; align-items:center; gap:28px; margin-bottom:16px;">
+              ${kaliteDonutSvg}
+              <table style="margin-bottom:0;">
+                <tbody>
+                  <tr><td style="border-left:4px solid #2F9C95;">Sertifikalı</td><td>%${gecti}</td></tr>
+                  <tr><td style="border-left:4px solid #2E6DA8;">Kabul Edilebilir</td><td>%${Math.max(0, uyariPct).toFixed(2)}</td></tr>
+                  <tr><td style="border-left:4px solid #E76F51;">Hatalı</td><td>%${redPct.toFixed(2)}</td></tr>
+                </tbody>
+              </table>
+            </div>
+
             <hr />
 
             <h2>OEE Performans Kırılımı</h2>
@@ -351,6 +394,30 @@ export default function AnalizEkrani() {
                 ${bantRows}
               </tbody>
             </table>
+
+            <hr />
+
+            <h2>Makinelere Göre Üretim</h2>
+            <p style="font-size:11px; color:#5E7389; margin-top:-10px;">Toplam üretim adedine göre sıralandı — en çok üreten makine en üstte.</p>
+            <div style="margin-bottom:16px;">
+              ${makineUretimBarHtml}
+            </div>
+
+            <hr />
+
+            <h2>Ay Bazında Üretim</h2>
+            <p style="font-size:11px; color:#5E7389; margin-top:-10px;">Tüm makinelerin birleşik toplam üretimi, aylara göre.</p>
+            <div style="margin-bottom:16px;">
+              ${aylikUretimSvg}
+            </div>
+
+            <hr />
+
+            <h2>Makinelere Göre Hata Sayısı</h2>
+            <p style="font-size:11px; color:#5E7389; margin-top:-10px;">Açıklanmış hata bildirimi sayısı, makineye göre.</p>
+            <div style="margin-bottom:16px;">
+              ${hataSayisiBarHtml}
+            </div>
 
             <hr />
 
@@ -513,34 +580,6 @@ export default function AnalizEkrani() {
         </View>
       </Card>
 
-      {/* Ürün Kalite Dağılımı (Grafik) */}
-      <Card>
-        <SH title="Ürün Kalite Dağılımı" />
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
-          <DonutGraf
-            segments={[
-              { pct: gectiPct, color: C.mint },
-              { pct: uyariPct, color: C.blue },
-              { pct: redPct, color: C.peach },
-            ]}
-            merkezEtiket="Sertifikalı"
-            merkezDeger={`%${gectiPct.toFixed(0)}`}
-          />
-          <View style={{ flex: 1, gap: 10 }}>
-            {kaliteSeviyeler.map(q => (
-              <View key={q.label} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: q.color }} />
-                <Text style={{ fontSize: 10.5, color: C.muted, flex: 1 }}>{q.label}</Text>
-                <Text style={{ fontSize: 10.5, fontWeight: "700", color: C.text }}>{q.text}</Text>
-              </View>
-            ))}
-            <Text style={{ fontSize: 9, color: C.muted, marginTop: 4, lineHeight: 13 }}>
-              Toplam üretimden sertifikasız (Kabul Edilebilir + Hatalı) oran: %{(uyariPct + redPct).toFixed(2)}
-            </Text>
-          </View>
-        </View>
-      </Card>
-
       {/* Üretim Özet Bakış */}
       <Card>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -567,17 +606,6 @@ export default function AnalizEkrani() {
         </View>
       </Card>
 
-      {/* Makinelere Göre Üretim — hangi makine daha fazla çalıştı (toplam üretim verisine göre) */}
-      <Card>
-        <SH title="Makinelere Göre Üretim" />
-        <Text style={{ fontSize: 10, color: C.muted, marginTop: -6, marginBottom: 12 }}>
-          Toplam üretim adedine göre sıralandı — en çok üreten makine en üstte.
-        </Text>
-        <SiraliBarListesi
-          data={makineUretimi.map(m => ({ label: m.isim, deger: m.toplamUretim }))}
-          renk={C.blue}
-        />
-      </Card>
 
       {/* Öneriler */}
       <Card>
@@ -689,53 +717,6 @@ export default function AnalizEkrani() {
         )}
       </Card>
 
-      {/* Ay Bazında Üretim (nokta grafiği) */}
-      <Card>
-        <SH title="Ay Bazında Üretim" />
-        <Text style={{ fontSize: 10, color: C.muted, marginTop: -6, marginBottom: 12 }}>
-          Tüm makinelerin birleşik toplam üretimi, aylara göre.
-        </Text>
-        {aylikUretim.length > 0 ? (
-          <LineChart
-            data={aylikUretim.map(a => ({ value: a.uretim }))}
-            width={W - 80}
-            height={110}
-            color={C.blue}
-            thickness={2}
-            dataPointsColor={C.blue}
-            dataPointsRadius={4}
-            curved
-            rulesColor={C.border}
-            xAxisColor="transparent"
-            yAxisColor="transparent"
-            xAxisLabelTexts={aylikUretim.map(a => ayEtiketi(a.ay))}
-            xAxisLabelTextStyle={{ color: C.muted, fontSize: 8 }}
-            yAxisTextStyle={{ color: C.muted, fontSize: 8 }}
-            noOfSections={3}
-            spacing={Math.max(35, (W - 120) / Math.max(1, aylikUretim.length))}
-            initialSpacing={15}
-            endSpacing={15}
-          />
-        ) : (
-          <Text style={{ fontSize: 11, color: C.muted, paddingVertical: 20, textAlign: "center" }}>
-            Henüz aylık üretim verisi birikmedi — sistem üretim yaptıkça burada dolacak.
-          </Text>
-        )}
-      </Card>
-
-      {/* Makinelere Göre Hata Sayısı */}
-      <Card>
-        <SH title="Makinelere Göre Hata Sayısı" action="Hata Girişi" onAction={() => navigation.navigate("HataGirisi")} />
-        <Text style={{ fontSize: 10, color: C.muted, marginTop: -6, marginBottom: 12 }}>
-          Açıklanmış hata bildirimi sayısı, makineye göre.
-        </Text>
-        <SiraliBarListesi
-          data={hataSayilari.map(h => ({ label: h.isim, deger: h.adet }))}
-          renk={C.peach}
-          birim=" hata"
-          madalyaGoster={false}
-        />
-      </Card>
 
       {/* Hızlı Performans Tablosu */}
       <Card>

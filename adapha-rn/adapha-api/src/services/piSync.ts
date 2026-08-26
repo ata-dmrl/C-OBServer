@@ -160,17 +160,31 @@ function baglan(io: Server) {
   });
 }
 
+// Aynı makine için art arda (gürültülü hız okumasından kaynaklanan) tekrar
+// tekrar kayıt açılmasını önlemek için minimum aralık. Bundan daha eski bir
+// duruş, kullanıcı henüz açıklamamış olsa bile YENİ ve AYRI bir olay sayılır.
+const HATA_BILDIRIMI_MIN_ARALIK_MS = 60_000;
+
 // Hattın anlık hızı >0'dan 0'a düştüğü an çağrılır — "hatalı ürün çıktı" anı.
 // Kullanıcının makine sayfasından gireceği açıklamayı bekleyen bir kayıt açar.
-// Aynı makine için zaten açıklama bekleyen bir kayıt varsa (kullanıcı henüz
-// girmediyse) tekrar açmıyoruz — yoksa kısa aralıklı duruş/kalkışlarda
-// (hız gürültüsü) her seferinde yeni bir bekleyen kayıt birikirdi.
+//
+// Eskiden "aynı makine için bekleyen bir kayıt varsa hiç açma" kuralı vardı -
+// ama bu, kullanıcı bir açıklamayı girmeden önce AYNI makine tekrar durursa
+// (gerçekten farklı bir olay, sadece önceki henüz açıklanmamış) o ikinci
+// duruşun sessizce kaybolmasına sebep oluyordu ("aynı makine farklı zaman
+// diliminde hata verdiğinde listelenmiyor" şikayeti). Artık sadece SON
+// kayıttan (durumu ne olursa olsun) bu yana yeterince zaman geçtiyse yeni
+// kayıt açılıyor - gürültülü art arda sıçramalar hâlâ tek kayda toplanır,
+// ama gerçekten ayrı zamanlı duruşlar ayrı ayrı listelenir.
 async function hataliUrunTespitEt(bantId: string, io: Server) {
   try {
-    const bekleyen = await prisma.hataBildirimi.findFirst({
-      where: { bantId, durum: "bekliyor" },
+    const sonKayit = await prisma.hataBildirimi.findFirst({
+      where: { bantId },
+      orderBy: { hataZamani: "desc" },
     });
-    if (bekleyen) return;
+    if (sonKayit && Date.now() - sonKayit.hataZamani.getTime() < HATA_BILDIRIMI_MIN_ARALIK_MS) {
+      return;
+    }
 
     const yeniKayit = await prisma.hataBildirimi.create({
       data: { bantId, hataZamani: new Date(), durum: "bekliyor" },
