@@ -360,8 +360,13 @@ export default function HomeScreen() {
     hataliUretim = Math.max(0, oturumUretim - oturumIyi);
     hataOrani = Math.min(100, Math.max(0, (hataliUretim / oturumUretim) * 100));
   } else {
-    hataOrani = Math.min(100, Math.max(0, 100 - ortalamaSertifika));
-    hataliUretim = Math.round(aktifToplamUretim * (hataOrani / 100));
+    // Eskiden burada sertifika oranını ham (ömür boyu) toplam üretimle
+    // çarpıp tahmin ediyorduk - bu da gerçekte olmayan büyüklükte sayılar
+    // üretiyordu (ör. "4.000 birim"). Oturum verisi henüz yokken de
+    // doğrudan ham sayaçların farkını (toplam - iyi) kullanmak, ekranda
+    // zaten görünen toplam/iyi üretim sayılarıyla tutarlı kalır.
+    hataliUretim = Math.max(0, aktifToplamUretim - aktifIyiUretim);
+    hataOrani = aktifToplamUretim > 0 ? Math.min(100, Math.max(0, (hataliUretim / aktifToplamUretim) * 100)) : 0;
   }
 
   return (
@@ -473,7 +478,7 @@ export default function HomeScreen() {
         <SH title="Üretim Özeti" action="Detaylar" />
         {[
           { dot: C.mint, label: "İyi Ürünler", val: `%${ortalamaSertifika.toFixed(2)}  ·  ${aktifIyiUretim.toLocaleString("tr-TR")}` },
-          { dot: C.peachMd, label: "Hatalı / Fire", val: `%${hataOrani.toFixed(2)}   ·  ${hataliUretim.toLocaleString("tr-TR")}` },
+          { dot: C.peachMd, label: "Standart Altı", val: `%${hataOrani.toFixed(2)}   ·  ${hataliUretim.toLocaleString("tr-TR")}` },
         ].map(r => (
           <View key={r.label} style={s.summaryRow}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>

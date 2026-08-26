@@ -55,7 +55,11 @@ export default function HataBildirimDetayEkrani() {
       const guncel = await hataAciklamasiGonder(id, aciklama.trim());
       setKayit(guncel);
       setBasarili(true);
-      setTimeout(() => navigation.goBack(), 1100);
+      // goBack() bu ekranla aynı tab navigator'da yaşayan başka bir tab'a
+      // (Ana Sayfa) düşebiliyordu - tab navigator'da "geri" kavramı stack'teki
+      // gibi net değil. Her zaman hata giriş listesine dönmesi için doğrudan
+      // hedefi belirtiyoruz.
+      setTimeout(() => navigation.navigate("HataGirisi"), 1100);
     } catch (e) {
       Alert.alert("Hata", "Açıklama gönderilemedi. Bağlantıyı kontrol edin.");
     } finally {
