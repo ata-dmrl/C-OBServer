@@ -42,6 +42,52 @@ export async function samplesGetir(bantId: string, limit: number = 20) {
 }
 
 /**
+ * Ay bazında toplam üretim (tüm makineler birleşik) — merkez_veri ham okuma
+ * geçmişinden türetilir, ayrı bir tabloya yazılmaz (bkz. samplesGetir notu).
+ *
+ * total/good ömür boyu artan sayaçlar; bir ayın üretimi o ay içindeki
+ * MAX(total)-MIN(total) farkıdır. Sayaç o ay içinde sıfırlanırsa (bkz.
+ * events.py COUNTER_RESET) bu fark olduğundan düşük çıkabilir — kabul
+ * edilebilir bir yaklaşıklık, projedeki diğer "plausible" sayaç
+ * toleranslarıyla aynı mantıkta (bkz. events.py _check_counter).
+ * Her makine için ayrı hesaplanıp ay bazında toplanır.
+ */
+export async function aylikUretimGetir() {
+  const rows = await prisma.$queryRaw<
+    { ay: string; makine: string; ilkTotal: bigint | null; sonTotal: bigint | null; ilkGood: bigint | null; sonGood: bigint | null }[]
+  >`
+    SELECT
+      strftime('%Y-%m', ts) AS "ay",
+      machine_id AS "makine",
+      MIN(total) AS "ilkTotal", MAX(total) AS "sonTotal",
+      MIN(good) AS "ilkGood", MAX(good) AS "sonGood"
+    FROM merkez_veri
+    WHERE valid = 1
+    GROUP BY ay, machine_id
+    ORDER BY ay ASC
+  `;
+
+  // SQLite'ın MIN/MAX'ı INTEGER kolonda Prisma tarafında BigInt olarak
+  // dönüyor (bkz. samplesGetir'deki aynı not) — aritmetik öncesi Number'a
+  // çevrilmeli, yoksa "Cannot convert a BigInt value to a number" hatası alınır.
+  const aylar = new Map<string, { uretim: number; iyi: number }>();
+  for (const r of rows) {
+    const ilkTotal = Number(r.ilkTotal ?? 0), sonTotal = Number(r.sonTotal ?? 0);
+    const ilkGood = Number(r.ilkGood ?? 0), sonGood = Number(r.sonGood ?? 0);
+    const uretimFarki = Math.max(0, sonTotal - ilkTotal);
+    const iyiFarki = Math.max(0, sonGood - ilkGood);
+    const mevcut = aylar.get(r.ay) || { uretim: 0, iyi: 0 };
+    mevcut.uretim += uretimFarki;
+    mevcut.iyi += iyiFarki;
+    aylar.set(r.ay, mevcut);
+  }
+
+  return Array.from(aylar.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([ay, v]) => ({ ay, uretim: v.uretim, iyi: v.iyi }));
+}
+
+/**
  * Pi'den (aslında merkezden — bkz. pi.ts'teki adres notu) anlık OEE değerini
  * çeker. OEE bellekteki olay motorundan geliyor, ham okumalardan yeniden
  * hesaplanamaz — bu yüzden hâlâ HTTP ile canlı sorgulanıyor. Artık ayrı bir

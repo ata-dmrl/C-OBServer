@@ -25,7 +25,18 @@ export default function HataBildirimDetayEkrani() {
   const [basarili, setBasarili] = useState(false);
 
   useEffect(() => {
+    // Bu ekran sekme yapısında TEK bir örnek olarak yaşıyor — farklı bir
+    // makinenin bildirimine tıklanınca bileşen yeniden kurulmuyor, sadece
+    // "id" parametresi değişiyor. Önceki makinenin "gönderildi"/"açıklama"
+    // durumu sıfırlanmazsa, yeni (henüz açıklanmamış) makinede de yanlışlıkla
+    // "zaten açıklandı" kutusu görünüyordu. Bu yüzden id her değiştiğinde
+    // ekranı tamamen sıfırlayıp yeniden çekiyoruz.
     let mounted = true;
+    setLoading(true);
+    setKayit(null);
+    setAciklama("");
+    setBasarili(false);
+    setGonderiliyor(false);
     hataBildirimDetayiniCek(id).then((data) => {
       if (!mounted) return;
       setKayit(data);
