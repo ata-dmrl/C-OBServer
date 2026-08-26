@@ -40,6 +40,33 @@ router.get("/rapor/liste", async (req, res) => {
   }
 });
 
+// ── GET /api/hata-bildirimleri/rapor/makine-sayilari ── Makinelere göre açıklanmış hata sayısı
+router.get("/rapor/makine-sayilari", async (req, res) => {
+  try {
+    const gruplar = await prisma.hataBildirimi.groupBy({
+      by: ["bantId"],
+      where: { durum: "aciklandi" },
+      _count: { _all: true },
+    });
+    if (gruplar.length === 0) {
+      res.json([]);
+      return;
+    }
+    const bantlar = await prisma.uygulamaVerisi.findMany({
+      where: { id: { in: gruplar.map(g => g.bantId) } },
+      select: { id: true, isim: true },
+    });
+    const isimMap = new Map(bantlar.map(b => [b.id, b.isim]));
+    const sonuc = gruplar
+      .map(g => ({ bantId: g.bantId, isim: isimMap.get(g.bantId) || g.bantId, adet: g._count._all }))
+      .sort((a, b) => b.adet - a.adet);
+    res.json(sonuc);
+  } catch (error) {
+    console.error("Makine hata sayıları çekilemedi:", error);
+    res.status(500).json({ error: "Sunucu hatası oluştu." });
+  }
+});
+
 // ── PATCH /api/hata-bildirimleri/toplu/gonder ── Çoklu seçim: aynı açıklama,
 // her makineye (satıra) AYRI kayıt olarak işlenir — tek satırda birleştirilmez.
 router.patch("/toplu/gonder", async (req, res) => {

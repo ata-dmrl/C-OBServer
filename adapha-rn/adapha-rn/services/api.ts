@@ -196,6 +196,48 @@ export async function performansTablosunuCek() {
   return await res.json();
 }
 
+export interface AylikUretim { ay: string; uretim: number; iyi: number }
+
+// Ay bazında (tüm makineler birleşik) toplam üretim — merkezin ham okuma
+// geçmişinden türetilir. Sistem yeni kurulduysa/az veri varsa boş veya kısa
+// bir dizi döner, bu normaldir — zamanla gerçek geçmişle dolar.
+export async function aylikUretimVerisiniCek(): Promise<AylikUretim[]> {
+  try {
+    const res = await fetch(`${API_URL}/analitik/aylik-uretim`);
+    if (!res.ok) throw new Error("Aylık üretim verisi çekilemedi");
+    return await res.json();
+  } catch (error) {
+    console.error("Aylık üretim verisi çekilemedi:", error);
+    return [];
+  }
+}
+
+export interface MakineUretimi { id: string; isim: string; toplamUretim: number }
+
+export async function makineUretimVerisiniCek(): Promise<MakineUretimi[]> {
+  try {
+    const res = await fetch(`${API_URL}/analitik/makine-uretimi`);
+    if (!res.ok) throw new Error("Makine üretim verisi çekilemedi");
+    return await res.json();
+  } catch (error) {
+    console.error("Makine üretim verisi çekilemedi:", error);
+    return [];
+  }
+}
+
+export interface MakineHataSayisi { bantId: string; isim: string; adet: number }
+
+export async function hataMakineSayilariniCek(): Promise<MakineHataSayisi[]> {
+  try {
+    const res = await fetch(`${API_URL}/hata-bildirimleri/rapor/makine-sayilari`);
+    if (!res.ok) throw new Error("Makine hata sayıları çekilemedi");
+    return await res.json();
+  } catch (error) {
+    console.error("Makine hata sayıları çekilemedi:", error);
+    return [];
+  }
+}
+
 // Şimdilik statik kalan analiz verileri (zamanla API'ye eklenebilir):
 export const hizProfili = [
   { t: "0:00", hiz: 0, miktar: 0 }, { t: "0:30", hiz: 18, miktar: 1500 },

@@ -1,7 +1,33 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
+import { aylikUretimGetir } from "../services/piRestClient";
 
 const router = Router();
+
+// ── GET /api/analitik/aylik-uretim ── Ay bazında birleşik üretim (nokta grafiği için)
+router.get("/aylik-uretim", async (req, res) => {
+  try {
+    const veri = await aylikUretimGetir();
+    res.json(veri);
+  } catch (error) {
+    console.error("Aylık üretim verisi çekilemedi:", error);
+    res.status(500).json({ error: "Sunucu hatası oluştu." });
+  }
+});
+
+// ── GET /api/analitik/makine-uretimi ── Her makinenin toplam üretimi (hangi makine daha çok çalıştı)
+router.get("/makine-uretimi", async (req, res) => {
+  try {
+    const bantlar = await prisma.uygulamaVerisi.findMany({
+      select: { id: true, isim: true, toplamUretim: true },
+      orderBy: { toplamUretim: "desc" },
+    });
+    res.json(bantlar.map(b => ({ id: b.id, isim: b.isim, toplamUretim: b.toplamUretim || 0 })));
+  } catch (error) {
+    console.error("Makine üretim verisi çekilemedi:", error);
+    res.status(500).json({ error: "Sunucu hatası oluştu." });
+  }
+});
 
 // ── GET /api/analitik/radar ── Radar grafik verisi
 router.get("/radar", async (req, res) => {

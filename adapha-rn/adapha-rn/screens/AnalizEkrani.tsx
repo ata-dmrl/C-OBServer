@@ -7,7 +7,10 @@ import { Download, ChevronRight, Zap, Award, Calendar, CheckCircle } from "lucid
 import { C } from "../constants/colors";
 import { Card, SH } from "../components/Card";
 import ModalBottomSheet from "../components/ModalBottomSheet";
-import { radarVerisiniCek, performansTablosunuCek, isiHaritasiniCek, bantVerisiniCek, socket, Bant, getPiSamples } from "../services/api";
+import {
+  radarVerisiniCek, performansTablosunuCek, isiHaritasiniCek, bantVerisiniCek, socket, Bant, getPiSamples,
+  aylikUretimVerisiniCek, makineUretimVerisiniCek, hataMakineSayilariniCek, AylikUretim, MakineUretimi, MakineHataSayisi,
+} from "../services/api";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { useNavigation } from "@react-navigation/native";
@@ -57,6 +60,76 @@ function RadarGraf({ data }: { data: any[] }) {
   );
 }
 
+// Halka (donut) grafik — kalite dağılımı gibi oranları göstermek için.
+// Standart SVG tekniği: her dilim için strokeDasharray/strokeDashoffset,
+// -90° döndürerek saat 12 yönünden başlatılıyor.
+function DonutGraf({ segments, merkezEtiket, merkezDeger }: { segments: { pct: number; color: string }[]; merkezEtiket: string; merkezDeger: string }) {
+  const size = 132, strokeWidth = 20;
+  const r = (size - strokeWidth) / 2;
+  const c = size / 2;
+  const cevre = 2 * Math.PI * r;
+  let birikimPct = 0;
+  return (
+    <View style={{ alignItems: "center", justifyContent: "center" }}>
+      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <Circle cx={c} cy={c} r={r} stroke={C.border} strokeWidth={strokeWidth} fill="none" />
+        {segments.filter(s => s.pct > 0.01).map((s, i) => {
+          const dilimUzunlugu = (s.pct / 100) * cevre;
+          const offset = -((birikimPct / 100) * cevre);
+          birikimPct += s.pct;
+          return (
+            <Circle
+              key={i}
+              cx={c} cy={c} r={r}
+              stroke={s.color}
+              strokeWidth={strokeWidth}
+              fill="none"
+              strokeDasharray={`${dilimUzunlugu} ${cevre - dilimUzunlugu}`}
+              strokeDashoffset={offset}
+              strokeLinecap="butt"
+              transform={`rotate(-90 ${c} ${c})`}
+            />
+          );
+        })}
+      </Svg>
+      <View style={{ position: "absolute", alignItems: "center" }}>
+        <Text style={{ fontSize: 20, fontWeight: "800", color: C.text }}>{merkezDeger}</Text>
+        <Text style={{ fontSize: 8.5, color: C.muted, marginTop: 1 }}>{merkezEtiket}</Text>
+      </View>
+    </View>
+  );
+}
+
+// Sıralı yatay bar listesi — "hangi makine daha fazla" tarzı karşılaştırmalar için.
+function SiraliBarListesi({ data, renk, birim, madalyaGoster = true }: { data: { label: string; deger: number }[]; renk: string; birim?: string; madalyaGoster?: boolean }) {
+  if (!data || data.length === 0) {
+    return <Text style={{ fontSize: 11, color: C.muted, paddingVertical: 16, textAlign: "center" }}>Henüz veri yok.</Text>;
+  }
+  const max = Math.max(1, ...data.map(d => d.deger));
+  const madalya = (i: number) => !madalyaGoster ? "" : i === 0 ? "🥇 " : i === 1 ? "🥈 " : i === 2 ? "🥉 " : "";
+  return (
+    <View style={{ gap: 12 }}>
+      {data.map((d, i) => (
+        <View key={`${d.label}-${i}`}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+            <Text style={{ fontSize: 10.5, fontWeight: "600", color: C.text }}>{madalya(i)}{d.label}</Text>
+            <Text style={{ fontSize: 10.5, fontWeight: "700", color: renk }}>{d.deger.toLocaleString("tr-TR")}{birim || ""}</Text>
+          </View>
+          <View style={{ height: 8, borderRadius: 99, backgroundColor: "#D8E6F0", overflow: "hidden" }}>
+            <View style={{ height: "100%", width: `${Math.max(2, (d.deger / max) * 100)}%`, backgroundColor: renk, borderRadius: 99 }} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const AY_KISALTMA = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
+function ayEtiketi(ay: string): string {
+  const [yil, ayNo] = ay.split("-");
+  return `${AY_KISALTMA[Number(ayNo) - 1] || ayNo} '${yil.slice(2)}`;
+}
+
 // Isı haritası rengi
 function isiRengi(v: number): string {
   const ops = ["1A", "30", "50", "80", "B0", "E0"];
@@ -75,6 +148,9 @@ export default function AnalizEkrani() {
   const [detayModal, setDetayModal] = useState(false);
   const [canliBantlar, setCanliBantlar] = useState<Bant[]>([]);
   const [piTrendler, setPiTrendler] = useState<any[]>([]);
+  const [aylikUretim, setAylikUretim] = useState<AylikUretim[]>([]);
+  const [makineUretimi, setMakineUretimi] = useState<MakineUretimi[]>([]);
+  const [hataSayilari, setHataSayilari] = useState<MakineHataSayisi[]>([]);
 
   // Ortalama OEE artık canlı gelen bant verisinden türetiliyor (bant_guncellendi
   // ile zaten anlık güncelleniyor) — ayrı, tek seferlik bir REST isteğine
@@ -86,15 +162,21 @@ export default function AnalizEkrani() {
   useEffect(() => {
     const veriCek = async (bantIdIcinTrend?: string) => {
       try {
-        const [rData, pData, iData, bVeri] = await Promise.all([
+        const [rData, pData, iData, bVeri, ayData, makineData, hataData] = await Promise.all([
           radarVerisiniCek(),
           performansTablosunuCek(),
           isiHaritasiniCek(),
-          bantVerisiniCek()
+          bantVerisiniCek(),
+          aylikUretimVerisiniCek(),
+          makineUretimVerisiniCek(),
+          hataMakineSayilariniCek(),
         ]);
         setRadarData(rData || []);
         setPerformansData(pData || []);
         setIsiData(iData || { hatlar: [], sutunlar: [], degerler: [] });
+        setAylikUretim(ayData || []);
+        setMakineUretimi(makineData || []);
+        setHataSayilari(hataData || []);
 
         // "acik" (o an üretiyor) değil, "bağlı" (sisteme veri gönderiyor) olan
         // bantları alıyoruz — kısa süreli duruşta bant burada kaybolmasın.
@@ -431,6 +513,34 @@ export default function AnalizEkrani() {
         </View>
       </Card>
 
+      {/* Ürün Kalite Dağılımı (Grafik) */}
+      <Card>
+        <SH title="Ürün Kalite Dağılımı" />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
+          <DonutGraf
+            segments={[
+              { pct: gectiPct, color: C.mint },
+              { pct: uyariPct, color: C.blue },
+              { pct: redPct, color: C.peach },
+            ]}
+            merkezEtiket="Sertifikalı"
+            merkezDeger={`%${gectiPct.toFixed(0)}`}
+          />
+          <View style={{ flex: 1, gap: 10 }}>
+            {kaliteSeviyeler.map(q => (
+              <View key={q.label} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: q.color }} />
+                <Text style={{ fontSize: 10.5, color: C.muted, flex: 1 }}>{q.label}</Text>
+                <Text style={{ fontSize: 10.5, fontWeight: "700", color: C.text }}>{q.text}</Text>
+              </View>
+            ))}
+            <Text style={{ fontSize: 9, color: C.muted, marginTop: 4, lineHeight: 13 }}>
+              Toplam üretimden sertifikasız (Kabul Edilebilir + Hatalı) oran: %{(uyariPct + redPct).toFixed(2)}
+            </Text>
+          </View>
+        </View>
+      </Card>
+
       {/* Üretim Özet Bakış */}
       <Card>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -455,6 +565,18 @@ export default function AnalizEkrani() {
             </View>
           ))}
         </View>
+      </Card>
+
+      {/* Makinelere Göre Üretim — hangi makine daha fazla çalıştı (toplam üretim verisine göre) */}
+      <Card>
+        <SH title="Makinelere Göre Üretim" />
+        <Text style={{ fontSize: 10, color: C.muted, marginTop: -6, marginBottom: 12 }}>
+          Toplam üretim adedine göre sıralandı — en çok üreten makine en üstte.
+        </Text>
+        <SiraliBarListesi
+          data={makineUretimi.map(m => ({ label: m.isim, deger: m.toplamUretim }))}
+          renk={C.blue}
+        />
       </Card>
 
       {/* Öneriler */}
@@ -565,6 +687,54 @@ export default function AnalizEkrani() {
             Henüz kaydedilmiş trend verisi yok.
           </Text>
         )}
+      </Card>
+
+      {/* Ay Bazında Üretim (nokta grafiği) */}
+      <Card>
+        <SH title="Ay Bazında Üretim" />
+        <Text style={{ fontSize: 10, color: C.muted, marginTop: -6, marginBottom: 12 }}>
+          Tüm makinelerin birleşik toplam üretimi, aylara göre.
+        </Text>
+        {aylikUretim.length > 0 ? (
+          <LineChart
+            data={aylikUretim.map(a => ({ value: a.uretim }))}
+            width={W - 80}
+            height={110}
+            color={C.blue}
+            thickness={2}
+            dataPointsColor={C.blue}
+            dataPointsRadius={4}
+            curved
+            rulesColor={C.border}
+            xAxisColor="transparent"
+            yAxisColor="transparent"
+            xAxisLabelTexts={aylikUretim.map(a => ayEtiketi(a.ay))}
+            xAxisLabelTextStyle={{ color: C.muted, fontSize: 8 }}
+            yAxisTextStyle={{ color: C.muted, fontSize: 8 }}
+            noOfSections={3}
+            spacing={Math.max(35, (W - 120) / Math.max(1, aylikUretim.length))}
+            initialSpacing={15}
+            endSpacing={15}
+          />
+        ) : (
+          <Text style={{ fontSize: 11, color: C.muted, paddingVertical: 20, textAlign: "center" }}>
+            Henüz aylık üretim verisi birikmedi — sistem üretim yaptıkça burada dolacak.
+          </Text>
+        )}
+      </Card>
+
+      {/* Makinelere Göre Hata Sayısı */}
+      <Card>
+        <SH title="Makinelere Göre Hata Sayısı" action="Hata Girişi" onAction={() => navigation.navigate("HataGirisi")} />
+        <Text style={{ fontSize: 10, color: C.muted, marginTop: -6, marginBottom: 12 }}>
+          Açıklanmış hata bildirimi sayısı, makineye göre.
+        </Text>
+        <SiraliBarListesi
+          data={hataSayilari.map(h => ({ label: h.isim, deger: h.adet }))}
+          renk={C.peach}
+          birim=" hata"
+          madalyaGoster={false}
+        />
       </Card>
 
       {/* Hızlı Performans Tablosu */}
