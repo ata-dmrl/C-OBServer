@@ -238,6 +238,23 @@ export async function hataMakineSayilariniCek(): Promise<MakineHataSayisi[]> {
   }
 }
 
+// ── Tarihe göre günlük rapor (AnalizEkrani.tsx'teki takvim seçici için) ──
+export interface TarihRaporu {
+  tarih: string;
+  toplamUretim: number;
+  toplamIyi: number;
+  sertifikaOrani: number;
+  makineler: { id: string; isim: string; toplamUretim: number; iyiUretim: number }[];
+  hatalar: { id: string; isim: string; adet: number }[];
+  hataDetaylari: { id: number; bantId: string; isim: string; hataZamani: string; aciklama: string | null; durum: string }[];
+}
+
+export async function tarihRaporuCek(tarih: string): Promise<TarihRaporu> {
+  const res = await fetch(`${API_URL}/analitik/tarih-raporu?tarih=${tarih}`);
+  if (!res.ok) throw new Error("Tarihe göre rapor verisi alınamadı");
+  return await res.json();
+}
+
 // Şimdilik statik kalan analiz verileri (zamanla API'ye eklenebilir):
 export const hizProfili = [
   { t: "0:00", hiz: 0, miktar: 0 }, { t: "0:30", hiz: 18, miktar: 1500 },

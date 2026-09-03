@@ -10,6 +10,7 @@ import ModalBottomSheet from "../components/ModalBottomSheet";
 import {
   radarVerisiniCek, performansTablosunuCek, isiHaritasiniCek, bantVerisiniCek, socket, Bant, getPiSamples,
   aylikUretimVerisiniCek, makineUretimVerisiniCek, hataMakineSayilariniCek, AylikUretim, MakineUretimi, MakineHataSayisi,
+  tarihRaporuCek,
 } from "../services/api";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
@@ -64,6 +65,23 @@ const AY_KISALTMA = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "
 function ayEtiketi(ay: string): string {
   const [yil, ayNo] = ay.split("-");
   return `${AY_KISALTMA[Number(ayNo) - 1] || ayNo} '${yil.slice(2)}`;
+}
+
+// "Tarihe Göre Rapor" takvim seçicisi için yardımcılar
+const AY_ADLARI = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
+const GUN_KISALTMA = ["Pt", "Sa", "Ça", "Pe", "Cu", "Ct", "Pz"];
+function ayinGunSayisi(yil: number, ay: number): number {
+  return new Date(yil, ay + 1, 0).getDate();
+}
+function ayinIlkGunuHaftaIndeksi(yil: number, ay: number): number {
+  const gun = new Date(yil, ay, 1).getDay(); // 0=Pazar
+  return (gun + 6) % 7; // Pazartesi=0 baslangicli
+}
+function tarihEsitMi(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+function tarihStrUret(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 // PDF raporu (expo-print, WebView tabanlı) React Native SVG bileşenlerini
@@ -164,6 +182,9 @@ export default function AnalizEkrani() {
   const [aylikUretim, setAylikUretim] = useState<AylikUretim[]>([]);
   const [makineUretimi, setMakineUretimi] = useState<MakineUretimi[]>([]);
   const [hataSayilari, setHataSayilari] = useState<MakineHataSayisi[]>([]);
+  const [tarihModal, setTarihModal] = useState(false);
+  const [takvimAy, setTakvimAy] = useState<Date>(new Date());
+  const [tarihRaporYukleniyor, setTarihRaporYukleniyor] = useState(false);
 
   // Ortalama OEE artık canlı gelen bant verisinden türetiliyor (bant_guncellendi
   // ile zaten anlık güncelleniyor) — ayrı, tek seferlik bir REST isteğine
@@ -451,6 +472,157 @@ export default function AnalizEkrani() {
     }
   };
 
+  // "Rapor İndir" (o anki canlı duruma göre) ile aynı HTML şablonunu ve
+  // grafik üreticilerini (donutSvgUret/barListeHtmlUret) kullanır — tek fark
+  // canlı bant verisi yerine seçilen güne ait merkez_veri toplamlarını
+  // (bkz. /api/analitik/tarih-raporu) kaynak alması.
+  const tarihliRaporIndir = async (tarih: Date) => {
+    setTarihModal(false);
+    setTarihRaporYukleniyor(true);
+    try {
+      const tarihStr = tarihStrUret(tarih);
+      const veri = await tarihRaporuCek(tarihStr);
+
+      const toplamHatali = Math.max(0, veri.toplamUretim - veri.toplamIyi);
+      const sertOrani = Math.min(100, Math.max(0, veri.sertifikaOrani));
+
+      const donutSvg = donutSvgUret(
+        [
+          { pct: sertOrani, color: "#2F9C95" },
+          { pct: Math.max(0, 100 - sertOrani), color: "#E76F51" },
+        ],
+        `%${sertOrani.toFixed(1)}`, "Sertifikalı"
+      );
+      const makineBarHtml = barListeHtmlUret(
+        veri.makineler.map(m => ({ label: m.isim, deger: m.toplamUretim })), "#2E6DA8"
+      );
+      const hataBarHtml = barListeHtmlUret(
+        veri.hatalar.map(h => ({ label: h.isim, deger: h.adet })), "#E76F51", " hata"
+      );
+
+      const bantRows = veri.makineler.length > 0 ? veri.makineler.map(m => {
+        const fire = m.toplamUretim > 0 ? (((m.toplamUretim - m.iyiUretim) / m.toplamUretim) * 100).toFixed(1) : "0";
+        return `
+          <tr>
+            <td>${m.isim}</td>
+            <td>${m.toplamUretim.toLocaleString("tr-TR")}</td>
+            <td>${m.iyiUretim.toLocaleString("tr-TR")}</td>
+            <td>%${fire}</td>
+          </tr>
+        `;
+      }).join('') : `<tr><td colspan="4" style="text-align:center;">Bu tarihte üretim verisi bulunamadı.</td></tr>`;
+
+      const tarihBaslik = tarih.toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" });
+      const olusturmaStr = new Date().toLocaleString("tr-TR");
+
+      const htmlContent = `
+        <html>
+          <head>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; padding: 40px; color: #24292e; line-height: 1.5; font-size: 14px; }
+              h1 { font-size: 2em; border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; margin-bottom: 16px; margin-top: 0; }
+              h2 { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; margin-top: 24px; margin-bottom: 16px; }
+              hr { height: 0.25em; padding: 0; margin: 24px 0; background-color: #e1e4e8; border: 0; }
+              p { margin-top: 0; margin-bottom: 16px; }
+              table { border-collapse: collapse; width: 100%; margin-top: 0; margin-bottom: 16px; }
+              table th, table td { padding: 6px 13px; border: 1px solid #dfe2e5; }
+              table th { font-weight: 600; text-align: left; }
+              table tr { background-color: #fff; border-top: 1px solid #c6cbd1; }
+              table tr:nth-child(2n) { background-color: #f6f8fa; }
+            </style>
+          </head>
+          <body>
+            <h1>Günlük Üretim Raporu</h1>
+
+            <p><strong>Rapor Tarihi:</strong> ${tarihBaslik}</p>
+            <p><strong>Oluşturulma:</strong> ${olusturmaStr}</p>
+
+            <hr />
+
+            <h2>Genel Özet</h2>
+
+            <table>
+              <thead>
+                <tr><th>Metrik</th><th>Değer</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Toplam Üretim</td><td>${veri.toplamUretim.toLocaleString("tr-TR")} adet</td></tr>
+                <tr><td>Sertifikalı Ürün</td><td>%${sertOrani.toFixed(1)} (${veri.toplamIyi.toLocaleString("tr-TR")} adet)</td></tr>
+                <tr><td>Standart Altı</td><td>${toplamHatali.toLocaleString("tr-TR")} adet</td></tr>
+                <tr><td>Hata Bildirimi Sayısı</td><td>${veri.hataDetaylari.length}</td></tr>
+              </tbody>
+            </table>
+
+            <h2>Ürün Kalite Dağılımı</h2>
+            <div style="display:flex; align-items:center; gap:28px; margin-bottom:16px;">
+              ${donutSvg}
+              <table style="margin-bottom:0;">
+                <tbody>
+                  <tr><td style="border-left:4px solid #2F9C95;">Sertifikalı</td><td>%${sertOrani.toFixed(1)}</td></tr>
+                  <tr><td style="border-left:4px solid #E76F51;">Standart Altı</td><td>%${(100 - sertOrani).toFixed(1)}</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <hr />
+
+            <h2>Hat Bazlı Detaylar</h2>
+
+            <table>
+              <thead>
+                <tr><th>Hat</th><th>Toplam Üretim</th><th>Sertifikalı</th><th>Standart Altı Oranı</th></tr>
+              </thead>
+              <tbody>
+                ${bantRows}
+              </tbody>
+            </table>
+
+            <hr />
+
+            <h2>Makinelere Göre Üretim</h2>
+            <p style="font-size:11px; color:#5E7389; margin-top:-10px;">Seçilen güne ait toplam üretim adedine göre sıralandı.</p>
+            <div style="margin-bottom:16px;">
+              ${makineBarHtml}
+            </div>
+
+            <hr />
+
+            <h2>Makinelere Göre Hata Sayısı</h2>
+            <p style="font-size:11px; color:#5E7389; margin-top:-10px;">Seçilen güne ait hata bildirimi sayısı, makineye göre.</p>
+            <div style="margin-bottom:16px;">
+              ${hataBarHtml}
+            </div>
+
+            <hr />
+
+            <h2>Onay</h2>
+
+            <table>
+              <thead>
+                <tr><th>İşletme Sorumlusu</th><th>Vardiya Amiri</th><th>Kalite Kontrol</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Ad Soyad / İmza / Tarih<br><br><br><br></td>
+                  <td>Ad Soyad / İmza / Tarih<br><br><br><br></td>
+                  <td>Ad Soyad / İmza / Tarih<br><br><br><br></td>
+                </tr>
+              </tbody>
+            </table>
+
+          </body>
+        </html>
+      `;
+      const { uri } = await Print.printToFileAsync({ html: htmlContent });
+      await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: `${tarihBaslik} Üretim Raporu` });
+    } catch (error: any) {
+      console.error("Tarihli rapor hatası:", error);
+      Alert.alert("Rapor oluşturulamadı", error?.message || "Bu tarihe ait veri alınamadı.");
+    } finally {
+      setTarihRaporYukleniyor(false);
+    }
+  };
+
 
   // Veritabanına kaydedilmiş gerçek Trend kayıtları dışında bir şey göstermiyoruz.
   const gercekTrendVar = !!(piTrendler && piTrendler.length > 0);
@@ -528,6 +700,32 @@ export default function AnalizEkrani() {
           <Text style={{ fontSize: 12, fontWeight: "600", color: C.mint }}>Rapor başarıyla indirildi!</Text>
         </View>
       )}
+
+      {/* Tarihe Göre Rapor */}
+      <Card>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={[s.iconBox, { backgroundColor: C.blueLt }]}>
+            <Calendar size={16} color={C.blue} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.cardTitle}>Tarihe Göre Rapor</Text>
+            <Text style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>Belirli bir güne ait üretim raporunu indir</Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          style={[s.exportBtn, { backgroundColor: tarihRaporYukleniyor ? C.blueLt : C.blue, borderColor: C.blue, marginTop: 12, alignSelf: "flex-start" }]}
+          onPress={() => { setTakvimAy(new Date()); setTarihModal(true); }}
+          disabled={tarihRaporYukleniyor}
+        >
+          {tarihRaporYukleniyor
+            ? <ActivityIndicator size="small" color="white" />
+            : <Download size={12} color="white" />
+          }
+          <Text style={[s.exportBtnText, { color: "white" }]}>
+            {tarihRaporYukleniyor ? "Hazırlanıyor..." : "Tarih Seç ve İndir"}
+          </Text>
+        </TouchableOpacity>
+      </Card>
 
       {/* Stat kutucukları */}
       <View style={{ flexDirection: "row", gap: 12 }}>
@@ -777,6 +975,81 @@ export default function AnalizEkrani() {
               </View>
             </View>
           ))}
+        </View>
+      </ModalBottomSheet>
+
+      {/* Tarih Seçici (Takvim) Modalı */}
+      <ModalBottomSheet
+        visible={tarihModal}
+        onClose={() => setTarihModal(false)}
+        title="Rapor İçin Tarih Seç"
+      >
+        <View style={{ paddingBottom: 8 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <TouchableOpacity
+              onPress={() => setTakvimAy(new Date(takvimAy.getFullYear(), takvimAy.getMonth() - 1, 1))}
+              style={{ padding: 8 }}
+            >
+              <Text style={{ fontSize: 18, fontWeight: "700", color: C.peach }}>‹</Text>
+            </TouchableOpacity>
+            <Text style={{ fontSize: 14, fontWeight: "700", color: C.text }}>
+              {AY_ADLARI[takvimAy.getMonth()]} {takvimAy.getFullYear()}
+            </Text>
+            {(() => {
+              const suAn = new Date();
+              const suAyMi = takvimAy.getFullYear() === suAn.getFullYear() && takvimAy.getMonth() === suAn.getMonth();
+              return (
+                <TouchableOpacity
+                  onPress={() => setTakvimAy(new Date(takvimAy.getFullYear(), takvimAy.getMonth() + 1, 1))}
+                  disabled={suAyMi}
+                  style={{ padding: 8 }}
+                >
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: suAyMi ? C.border : C.peach }}>›</Text>
+                </TouchableOpacity>
+              );
+            })()}
+          </View>
+
+          <View style={{ flexDirection: "row", marginBottom: 8 }}>
+            {GUN_KISALTMA.map(g => (
+              <View key={g} style={{ width: `${100 / 7}%`, alignItems: "center" }}>
+                <Text style={{ fontSize: 9, color: C.muted, fontWeight: "700" }}>{g}</Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+            {Array.from({ length: ayinIlkGunuHaftaIndeksi(takvimAy.getFullYear(), takvimAy.getMonth()) }).map((_, i) => (
+              <View key={`bos-${i}`} style={{ width: `${100 / 7}%`, aspectRatio: 1 }} />
+            ))}
+            {Array.from({ length: ayinGunSayisi(takvimAy.getFullYear(), takvimAy.getMonth()) }).map((_, i) => {
+              const gun = i + 1;
+              const buTarih = new Date(takvimAy.getFullYear(), takvimAy.getMonth(), gun);
+              const gelecekMi = buTarih.getTime() > Date.now();
+              const bugunMu = tarihEsitMi(buTarih, new Date());
+              return (
+                <TouchableOpacity
+                  key={gun}
+                  disabled={gelecekMi}
+                  onPress={() => tarihliRaporIndir(buTarih)}
+                  style={{ width: `${100 / 7}%`, aspectRatio: 1, alignItems: "center", justifyContent: "center" }}
+                >
+                  <View style={{
+                    width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center",
+                    borderWidth: bugunMu ? 1.5 : 0, borderColor: C.peach,
+                  }}>
+                    <Text style={{ fontSize: 12, fontWeight: bugunMu ? "800" : "500", color: gelecekMi ? C.border : C.text }}>
+                      {gun}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <Text style={{ fontSize: 10, color: C.muted, textAlign: "center", marginTop: 16 }}>
+            Bir güne dokunduğunda o tarihe ait rapor otomatik hazırlanıp indirilir.
+          </Text>
         </View>
       </ModalBottomSheet>
 

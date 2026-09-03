@@ -88,6 +88,36 @@ export async function aylikUretimGetir() {
 }
 
 /**
+ * Tek bir güne ait, makine bazlı üretim (total/good farkı) — aylikUretimGetir
+ * ile aynı MIN/MAX-fark mantığı, sadece "ay" yerine tek bir "gün"e (tarih,
+ * "YYYY-MM-DD") ve GROUP BY machine_id'ye daraltılmış hali. Tarihe göre
+ * indirilebilir rapor (AnalizEkrani.tsx) için kullanılıyor.
+ */
+export async function tarihlikUretimGetir(tarih: string) {
+  const rows = await prisma.$queryRaw<
+    { makine: string; ilkTotal: bigint | null; sonTotal: bigint | null; ilkGood: bigint | null; sonGood: bigint | null }[]
+  >`
+    SELECT
+      machine_id AS "makine",
+      MIN(total) AS "ilkTotal", MAX(total) AS "sonTotal",
+      MIN(good) AS "ilkGood", MAX(good) AS "sonGood"
+    FROM merkez_veri
+    WHERE valid = 1 AND strftime('%Y-%m-%d', ts) = ${tarih}
+    GROUP BY machine_id
+  `;
+
+  return rows.map(r => {
+    const ilkTotal = Number(r.ilkTotal ?? 0), sonTotal = Number(r.sonTotal ?? 0);
+    const ilkGood = Number(r.ilkGood ?? 0), sonGood = Number(r.sonGood ?? 0);
+    return {
+      makine: r.makine,
+      toplamUretim: Math.max(0, sonTotal - ilkTotal),
+      iyiUretim: Math.max(0, sonGood - ilkGood),
+    };
+  });
+}
+
+/**
  * Pi'den (aslında merkezden — bkz. pi.ts'teki adres notu) anlık OEE değerini
  * çeker. OEE bellekteki olay motorundan geliyor, ham okumalardan yeniden
  * hesaplanamaz — bu yüzden hâlâ HTTP ile canlı sorgulanıyor. Artık ayrı bir

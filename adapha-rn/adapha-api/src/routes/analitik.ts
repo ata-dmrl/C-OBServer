@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
-import { aylikUretimGetir } from "../services/piRestClient";
+import { aylikUretimGetir, tarihlikUretimGetir } from "../services/piRestClient";
 
 const router = Router();
 
@@ -112,6 +112,72 @@ router.get("/isi-haritasi", async (req, res) => {
 
     res.json({ hatlar, sutunlar, degerler });
   } catch (error) {
+    res.status(500).json({ error: "Sunucu hatası oluştu." });
+  }
+});
+
+// ── GET /api/analitik/tarih-raporu?tarih=YYYY-MM-DD ── Belirli bir güne ait
+// makine bazlı üretim + hata özeti (indirilebilir "günlük rapor" için).
+router.get("/tarih-raporu", async (req, res) => {
+  try {
+    const tarih = String(req.query.tarih || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(tarih)) {
+      return res.status(400).json({ error: "Geçersiz tarih formatı, YYYY-MM-DD bekleniyor." });
+    }
+
+    const [uretimVerisi, bantlar] = await Promise.all([
+      tarihlikUretimGetir(tarih),
+      prisma.uygulamaVerisi.findMany({ select: { id: true, isim: true } }),
+    ]);
+    const isimMap = new Map(bantlar.map(b => [b.id, b.isim]));
+
+    // Gün sınırları yerel saatle - hataZamani UTC ISO olarak tutuluyor ama
+    // burada sadece "o güne ait" kaba bir aralık yeterli (raporun amacı
+    // mikrosaniye kesinliği değil, hangi güne ait olduğu).
+    const gunBaslangic = new Date(`${tarih}T00:00:00`);
+    const gunBitis = new Date(`${tarih}T23:59:59.999`);
+    const hatalar = await prisma.hataBildirimi.findMany({
+      where: { hataZamani: { gte: gunBaslangic, lte: gunBitis } },
+      orderBy: { hataZamani: "asc" },
+    });
+
+    const hataSayilariMap = new Map<string, number>();
+    hatalar.forEach(h => hataSayilariMap.set(h.bantId, (hataSayilariMap.get(h.bantId) || 0) + 1));
+
+    const makineler = uretimVerisi
+      .map(u => ({
+        id: u.makine,
+        isim: isimMap.get(u.makine) || u.makine,
+        toplamUretim: u.toplamUretim,
+        iyiUretim: u.iyiUretim,
+      }))
+      .sort((a, b) => b.toplamUretim - a.toplamUretim);
+
+    const hataListesi = Array.from(hataSayilariMap.entries())
+      .map(([bantId, adet]) => ({ id: bantId, isim: isimMap.get(bantId) || bantId, adet }))
+      .sort((a, b) => b.adet - a.adet);
+
+    const toplamUretim = makineler.reduce((s, m) => s + m.toplamUretim, 0);
+    const toplamIyi = makineler.reduce((s, m) => s + m.iyiUretim, 0);
+
+    res.json({
+      tarih,
+      toplamUretim,
+      toplamIyi,
+      sertifikaOrani: toplamUretim > 0 ? (toplamIyi / toplamUretim) * 100 : 0,
+      makineler,
+      hatalar: hataListesi,
+      hataDetaylari: hatalar.map(h => ({
+        id: h.id,
+        bantId: h.bantId,
+        isim: isimMap.get(h.bantId) || h.bantId,
+        hataZamani: h.hataZamani,
+        aciklama: h.aciklama,
+        durum: h.durum,
+      })),
+    });
+  } catch (error) {
+    console.error("Tarihe göre rapor verisi çekilemedi:", error);
     res.status(500).json({ error: "Sunucu hatası oluştu." });
   }
 });
