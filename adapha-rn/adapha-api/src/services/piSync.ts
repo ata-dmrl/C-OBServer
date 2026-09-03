@@ -101,6 +101,13 @@ async function agaBaglantisiKontrolEt(io: Server) {
         await prisma.uygulamaLog.create({
           data: { bantId: bant.id, tip: "hata", mesaj: `📡 ${bant.id} ile ağ bağlantısı kesildi (${bant.piIp} yanıt vermiyor).` },
         }).catch(() => {});
+        // Pasif/aktif bildirimiyle aynı yol - uygulama kapalıyken bile
+        // telefona düşsün. IP'yi mesajda tutuyoruz, hangi makine oldugu
+        // pasif/aktif bildiriminden farklı olarak burada tek gösterge.
+        const zamanEtiketi = new Date().toLocaleString("tr-TR", {
+          day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"
+        });
+        await pushGonder(`${bant.id} ağa erişilemiyor`, `${bant.piIp} yanıt vermiyor · ${zamanEtiketi}`);
       } else if (erisilebilir && oncekiDurum === false) {
         // Pi tekrar erişilebilir oldu ama uzun süredir veri de gelmemiş
         // olabilir - burada sadece "erişilemiyor" damgasını kaldırıyoruz,
