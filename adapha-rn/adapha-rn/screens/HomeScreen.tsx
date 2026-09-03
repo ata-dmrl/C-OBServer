@@ -443,7 +443,7 @@ export default function HomeScreen() {
           </View>
 
           <View style={{ width: "47%", backgroundColor: C.peachLt, padding: 12, borderRadius: 12 }}>
-            <Text style={{ fontSize: 10, color: C.muted, marginBottom: 4 }}>Duruş Süresi</Text>
+            <Text style={{ fontSize: 10, color: C.muted, marginBottom: 4 }}>Toplam Duruş Süresi</Text>
             <Text style={{ fontSize: 18, fontWeight: "800", color: C.peach }}>{formatDurusSuresi(guncelSeciliBant.duruşSuresiSn).value} <Text style={{ fontSize: 12, fontWeight: "600" }}>{formatDurusSuresi(guncelSeciliBant.duruşSuresiSn).unit}</Text></Text>
           </View>
           
