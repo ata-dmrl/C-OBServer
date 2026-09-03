@@ -77,14 +77,18 @@ export default function HataBildirimleriEkrani() {
     setSecilenIdler((prev) => (prev.includes(kayit.id) ? prev : [...prev, kayit.id]));
   };
 
-  const topluGonder = async () => {
-    if (!aciklamaMetni.trim()) {
+  // "metin" parametresi, Enter tuşuyla tetiklenen gönderimde henüz state'e
+  // işlenmemiş güncel değeri elden aktarabilmek için - setAciklamaMetni asenkron
+  // olduğundan, hemen ardından state okusaydık bir eski (stale) değer alırdık.
+  const topluGonder = async (metin?: string) => {
+    const gonderilecek = (metin ?? aciklamaMetni).trim();
+    if (!gonderilecek) {
       Alert.alert("Açıklama gerekli", "Lütfen hatanın nedenini yazın.");
       return;
     }
     setGonderiliyor(true);
     try {
-      await topluHataAciklamasiGonder(secilenIdler, aciklamaMetni.trim());
+      await topluHataAciklamasiGonder(secilenIdler, gonderilecek);
       setKayitlar((prev) => prev.filter((k) => !secilenIdler.includes(k.id)));
       secimiTemizle();
     } catch (e) {
@@ -92,6 +96,19 @@ export default function HataBildirimleriEkrani() {
     } finally {
       setGonderiliyor(false);
     }
+  };
+
+  // Metin kutusunda Enter'a basınca (multiline TextInput'ta bu bir "\n"
+  // karakteri olarak onChangeText'e düşer) satır eklemek yerine direkt
+  // gönder - kullanıcı ayrıca "Gönder" butonuna basmak zorunda kalmasın.
+  const aciklamaDegisti = (text: string) => {
+    if (text.endsWith("\n")) {
+      const temiz = text.slice(0, -1);
+      setAciklamaMetni(temiz);
+      if (temiz.trim()) topluGonder(temiz);
+      return;
+    }
+    setAciklamaMetni(text);
   };
 
   return (
@@ -173,9 +190,12 @@ export default function HataBildirimleriEkrani() {
               placeholderTextColor={C.muted}
               multiline
               value={aciklamaMetni}
-              onChangeText={setAciklamaMetni}
+              onChangeText={aciklamaDegisti}
+              returnKeyType="send"
+              blurOnSubmit
+              onSubmitEditing={() => { if (aciklamaMetni.trim()) topluGonder(); }}
             />
-            <TouchableOpacity style={s.sendBtn} onPress={topluGonder} disabled={gonderiliyor}>
+            <TouchableOpacity style={s.sendBtn} onPress={() => topluGonder()} disabled={gonderiliyor}>
               {gonderiliyor ? (
                 <ActivityIndicator color="white" size="small" />
               ) : (

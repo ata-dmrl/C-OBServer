@@ -45,14 +45,19 @@ export default function HataBildirimDetayEkrani() {
     return () => { mounted = false; };
   }, [id]);
 
-  const gonder = async () => {
-    if (!aciklama.trim()) {
+  // "metin" parametresi, Enter tuşuyla tetiklenen gönderimde henüz state'e
+  // işlenmemiş güncel değeri elden aktarabilmek için (bkz. HataBildirimleriEkrani
+  // aynı yorum) - setAciklama asenkron olduğundan hemen ardından state
+  // okusaydık eski (stale) değer alırdık.
+  const gonder = async (metin?: string) => {
+    const gonderilecek = (metin ?? aciklama).trim();
+    if (!gonderilecek) {
       Alert.alert("Açıklama gerekli", "Lütfen hatanın nedenini yazın.");
       return;
     }
     setGonderiliyor(true);
     try {
-      const guncel = await hataAciklamasiGonder(id, aciklama.trim());
+      const guncel = await hataAciklamasiGonder(id, gonderilecek);
       setKayit(guncel);
       setBasarili(true);
       // goBack() bu ekranla aynı tab navigator'da yaşayan başka bir tab'a
@@ -65,6 +70,19 @@ export default function HataBildirimDetayEkrani() {
     } finally {
       setGonderiliyor(false);
     }
+  };
+
+  // Metin kutusunda Enter'a basınca (multiline TextInput'ta bu bir "\n"
+  // karakteri olarak onChangeText'e düşer) satır eklemek yerine direkt
+  // gönder - kullanıcı ayrıca "Sisteme Gönder" butonuna basmak zorunda kalmasın.
+  const aciklamaDegisti = (text: string) => {
+    if (text.endsWith("\n")) {
+      const temiz = text.slice(0, -1);
+      setAciklama(temiz);
+      if (temiz.trim()) gonder(temiz);
+      return;
+    }
+    setAciklama(text);
   };
 
   if (loading) {
@@ -153,10 +171,13 @@ export default function HataBildirimDetayEkrani() {
                 placeholderTextColor={C.muted}
                 multiline
                 value={aciklama}
-                onChangeText={setAciklama}
+                onChangeText={aciklamaDegisti}
+                returnKeyType="send"
+                blurOnSubmit
+                onSubmitEditing={() => { if (aciklama.trim()) gonder(); }}
                 autoFocus
               />
-              <TouchableOpacity style={s.sendBtn} onPress={gonder} disabled={gonderiliyor}>
+              <TouchableOpacity style={s.sendBtn} onPress={() => gonder()} disabled={gonderiliyor}>
                 {gonderiliyor ? (
                   <ActivityIndicator color="white" size="small" />
                 ) : (
