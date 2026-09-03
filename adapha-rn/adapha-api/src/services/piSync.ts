@@ -1,4 +1,5 @@
 import WebSocket from "ws";
+import net from "net";
 import { prisma } from "../lib/prisma";
 import { Server } from "socket.io";
 
@@ -31,11 +32,85 @@ const lastSpeedByMachine = new Map<string, number>();
 // bildirimi -- eski durumla tesadüfen aynı geldiği için -- sessizce yutulabiliyordu.
 export function bantBildirimDurumunuSifirla(bantId: string) {
   lastMachineNotif.delete(bantId);
+  agErisimDurumu.delete(bantId);
 }
 
 export async function baslatPiSync(io: Server) {
   console.log(`📡 Merkez'e bağlanılıyor: ${MERKEZ_WS_URL}`);
   baglan(io);
+  setInterval(() => agaBaglantisiKontrolEt(io), AG_KONTROL_ARALIGI_MS);
+}
+
+// ── Ağ erişilebilirlik kontrolü ─────────────────────────────────────────
+//
+// Merkezin SINYAL_YOK tespiti Pi'nin veri GÖNDERMEYE DEVAM ettiği ama
+// okumaların bozuk olduğu durum için (bkz. events.py _on_bad_reading).
+// Pi'nin ağ bağlantısı tamamen kesilirse (kablo, elektrik, cihaz çökmesi)
+// merkeze hiç istek gelmez, bu yüzden bu durum hiç yakalanmıyordu -
+// baglantiDurumu son bilinen değerde donup kalıyordu. Burada, uzun süredir
+// güncellenmeyen bantlar için Pi'nin anlık görüntü sunucusuna (piIp:piPort)
+// bir TCP bağlantı denemesi yapılıyor. ICMP ping değil TCP tercih edildi:
+// ICMP genelde yönetici izni ister, TCP ise hem izinsiz çalışır hem de
+// gerçek bir servisin ayakta olup olmadığını doğrudan test eder.
+const AG_KONTROL_ARALIGI_MS = 15_000;
+const VERI_BAYATLAMA_ESIGI_MS = 20_000; // bu kadar süre güncellenmeyen bant "şüpheli" sayılır
+const TCP_ZAMAN_ASIMI_MS = 3_000;
+const AG_ERISILEMIYOR = "AG_ERISILEMIYOR";
+// Zaten "ağa erişilemiyor" olarak işaretlenmiş bantları tekrar tekrar
+// yazıp yayınlamamak için (her kontrol turunda değil, sadece durum
+// GERÇEKTEN değiştiğinde güncelleme/bildirim çıksın).
+const agErisimDurumu = new Map<string, boolean>();
+
+function tcpErisilebilirMi(ip: string, port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const soket = new net.Socket();
+    let bitti = false;
+    const kapat = (sonuc: boolean) => {
+      if (bitti) return;
+      bitti = true;
+      soket.destroy();
+      resolve(sonuc);
+    };
+    soket.setTimeout(TCP_ZAMAN_ASIMI_MS);
+    soket.once("connect", () => kapat(true));
+    soket.once("timeout", () => kapat(false));
+    soket.once("error", () => kapat(false));
+    soket.connect(port, ip);
+  });
+}
+
+async function agaBaglantisiKontrolEt(io: Server) {
+  try {
+    const esikZaman = new Date(Date.now() - VERI_BAYATLAMA_ESIGI_MS);
+    const supheliBantlar = await prisma.uygulamaVerisi.findMany({
+      where: { piIp: { not: null }, sonGuncelleme: { lt: esikZaman } },
+    });
+
+    for (const bant of supheliBantlar) {
+      if (!bant.piIp) continue;
+      const erisilebilir = await tcpErisilebilirMi(bant.piIp, bant.piPort || 8090);
+      const oncekiDurum = agErisimDurumu.get(bant.id);
+
+      if (!erisilebilir && oncekiDurum !== false) {
+        agErisimDurumu.set(bant.id, false);
+        const guncel = await prisma.uygulamaVerisi.update({
+          where: { id: bant.id },
+          data: { baglantiDurumu: AG_ERISILEMIYOR },
+        }).catch(() => null);
+        if (guncel) io.emit("bant_guncellendi", guncel);
+        await prisma.uygulamaLog.create({
+          data: { bantId: bant.id, tip: "hata", mesaj: `📡 ${bant.id} ile ağ bağlantısı kesildi (${bant.piIp} yanıt vermiyor).` },
+        }).catch(() => {});
+      } else if (erisilebilir && oncekiDurum === false) {
+        // Pi tekrar erişilebilir oldu ama uzun süredir veri de gelmemiş
+        // olabilir - burada sadece "erişilemiyor" damgasını kaldırıyoruz,
+        // gerçek ONLINE durumunu merkezden gelecek bir sonraki veri belirleyecek.
+        agErisimDurumu.delete(bant.id);
+      }
+    }
+  } catch (e) {
+    console.warn("⚠️ Ağ bağlantısı kontrolü başarısız:", e);
+  }
 }
 
 function baglan(io: Server) {
