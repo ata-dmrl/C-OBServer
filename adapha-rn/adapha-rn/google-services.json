@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1067440496893",
+    "project_id": "cobserver-9a02e",
+    "storage_bucket": "cobserver-9a02e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1067440496893:android:fe412a73f4042eabf19e94",
+        "android_client_info": {
+          "package_name": "com.adapha.c_observer"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyANhwmcMuM9fUxKH_XSHbebXs4sLuVb84Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
