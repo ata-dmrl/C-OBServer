@@ -29,8 +29,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.adapha.c_observer",
-      "usesCleartextTraffic": true
+      "package": "com.adapha.c_observer"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -41,6 +40,14 @@
         {
           "icon": "./assets/notification-icon.png",
           "color": "#1C2D4C"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
         }
       ]
     ],
