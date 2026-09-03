@@ -15,17 +15,21 @@ Notifications.setNotificationHandler({
 
 // Android + Expo Go kombinasyonunda uzak push bildirimi SDK 53'ten beri
 // desteklenmiyor — denemek her seferinde ekranın üstüne kırmızı bir hata
-// kutusu düşürüyordu. Expo Go içinde çalıştığımızı tespit edip Android'de
-// baştan vazgeçiyoruz; development build'de (executionEnvironment "standalone"
-// veya "bare" olur) bu kısıtlama yok, normal akışa devam eder.
+// kutusu düşürüyordu. Expo Go içinde çalıştığımızı tespit edip baştan
+// vazgeçiyoruz - artık PLATFORM FARKI GÖZETMİYORUZ: iOS'ta Expo Go teknik
+// olarak push alabiliyor olsa da, gerçek cihazdaki (standalone) uygulama
+// ile aynı anda test edilince aynı bildirim iki kez (biri "Expo Go", biri
+// "C-OBServer" altında) düşüyordu. Expo Go artık sadece geliştirme/önizleme
+// aracı, gerçek bildirim kaydı sadece standalone build'de (development
+// build'de executionEnvironment "standalone"/"bare" olur) yapılsın.
 const expoGoIcinde = Constants.executionEnvironment === "storeClient";
 
 // Expo push token'ını alıp backend'e kaydeder. EAS projesi bağlı değilse
 // (app.json/eas.json'da projectId yoksa) token alınamaz — bu durumda
 // sessizce vazgeçiyoruz, uygulamanın geri kalanı çalışmaya devam eder.
 export async function pushBildirimlerineKaydol() {
-  if (Platform.OS === "android" && expoGoIcinde) {
-    console.log("📵 Expo Go + Android: push bildirimi desteklenmiyor, atlanıyor (development build gerekir).");
+  if (expoGoIcinde) {
+    console.log(`📵 Expo Go (${Platform.OS}): push bildirimi kasıtlı olarak kaydedilmiyor, gerçek cihaz build'i kullan.`);
     return;
   }
   try {
